@@ -2,6 +2,10 @@
 
 Local-first personal journey memory system. The current seed data is Reference Journey 01: USA Business Road Trip 2026.
 
+Mission: Keep the journey. Not the noise.
+
+See the product constitution for core principles: [JOURNEYOS_CONSTITUTION.md](JOURNEYOS_CONSTITUTION.md)
+
 ## Core Product Documents
 
 - `JOURNEYOS_CONSTITUTION.md`

@@ -368,3 +368,61 @@ Keep the journey. Not the noise.
 
 ### 中文
 留下旅程，而不是喧嚣。
+
+---
+
+## Edit Suggestions — Acceptance Checks & Short Recommendations
+
+Purpose: quick, actionable checks to use in design reviews, PRs, and product decisions. Keep these as an appendix so the constitution remains the single source of principles.
+
+- Core summary (for README / product): EN: "Keep the journey. Not the noise."  CN: "留下旅程，而不是喧嚣。"
+
+- ARTICLE 0 — KEEP THE JOURNEY. NOT THE NOISE.
+	- Check: Does this change reduce UI or interaction noise and refocus attention on Moments?
+	- Short recommendation: "Preserve moments; remove distraction."
+
+- ARTICLE 1 — LESS IS MORE
+	- Check: Can this feature be removed, merged, or hidden by default?
+	- Short recommendation: Add a mandatory PR field: "Why this preserves memory?"
+
+- ARTICLE 2 — THE BEAUTY OF LESS
+	- Check: Does the screen breathe? Were extraneous labels, badges, or helpers removed?
+	- Short recommendation: Add a "visual noise checklist" to UI change reviews.
+
+- ARTICLE 3 — LOCAL FIRST
+	- Check: Is default storage local/offline? Is cloud sync opt-in and explicitly documented?
+	- Short recommendation: Document local-first checkpoints in `CONTRIBUTING.md`.
+
+- ARTICLE 4 — PRIVACY BY DEFAULT
+	- Check: Is any default-visible data private? Does sharing require explicit preview and confirmation?
+	- Short recommendation: Implement a privacy-review step before sharing.
+
+- ARTICLE 5 — MEMORY BEFORE FEATURES
+	- Check: Does the feature increase memory clarity or reduce cognitive load?
+	- Short recommendation: Add a "Memory Impact" field to feature specs.
+
+- ARTICLE 6 — AI MUST BE INVISIBLE
+	- Check: Are AI outputs presented as suggestions and is the original user text preserved?
+	- Short recommendation: Enforce an "Original → Suggestion → Adopt/Edit/Ignore" flow in UI.
+
+- ARTICLE 7 — SHARING IS A GIFT
+	- Check: Is sharing user-initiated, privacy-reviewed, and visually minimal?
+	- Short recommendation: Place sharing in a secondary action menu with an intent explanation.
+
+- ARTICLE 8 — THE JOURNEY IS THE HERO
+	- Check: Are Time / Place / Photo / Memory presented as primary elements on main views?
+	- Short recommendation: Default layouts for Moment/Day/Journey should prioritize these four elements.
+
+- ARTICLE 9 — ONE PERSON FIRST
+	- Check: Is the feature optimized for a single user and free of team/enterprise complexity?
+	- Short recommendation: Mark multi-user features as experimental and off by default.
+
+- ARTICLE 10 — EVERY SCREEN MUST BREATHE
+	- Check: Can a user understand the screen within 3 seconds? Is there sufficient whitespace and a clear focal point?
+	- Short recommendation: Add "3-second comprehension" to design acceptance criteria.
+
+- Quick execution suggestions:
+	- Add a short constitution summary to the top of the project `README.md` linking back to this file.
+	- Extend PR/CONTRIBUTING templates with: `Memory Impact`, `Privacy Check`, `Local-First` required fields.
+	- For key views in `app/` and `components/`, include "3-second comprehension" and "Four-element priority" in design tickets.
+

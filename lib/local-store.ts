@@ -1,5 +1,5 @@
 import Dexie, { Table } from "dexie";
-import { createMockTrip } from "@/lib/mock-data";
+import { createBlankJourneyTrip } from "@/lib/journey-factory";
 import {
   backupImportSchema,
   JourneyBackup,
@@ -17,6 +17,7 @@ const fallbackTripKey = "journey-os:trip";
 const fallbackTripsKey = "journey-os:trips";
 const fallbackStoriesKey = "journey-os:share-stories";
 const activeTripKey = "journey-os:active-trip";
+const cleanupKey = "journey-os:future-boundary-cleanup-v1";
 
 type StoredHotel = NonNullable<JourneyDay["hotel"]> & {
   id: string;
@@ -112,9 +113,35 @@ function readFallbackTrips(): Trip[] {
   return legacy ? [legacy] : [];
 }
 
+function safeSetLocalStorage(key: string, value: string) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // IndexedDB remains the source of truth for rich local data such as photos.
+  }
+}
+
+function stripPhotoDataForFallback(trip: Trip): Trip {
+  return {
+    ...trip,
+    days: trip.days.map((day) => ({
+      ...day,
+      photos: day.photos?.map((photo) => (
+        photo.localUrl
+          ? {
+              ...photo,
+              localUrl: undefined
+            }
+          : photo
+      ))
+    }))
+  };
+}
+
 function writeFallbackTrips(trips: Trip[]) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(fallbackTripsKey, JSON.stringify(trips));
+  safeSetLocalStorage(fallbackTripsKey, JSON.stringify(trips.map(stripPhotoDataForFallback)));
 }
 
 function readActiveTripId() {
@@ -125,7 +152,7 @@ function readActiveTripId() {
 function writeActiveTripId(tripId?: string) {
   if (typeof window === "undefined") return;
   if (tripId) {
-    window.localStorage.setItem(activeTripKey, tripId);
+    safeSetLocalStorage(activeTripKey, tripId);
   } else {
     window.localStorage.removeItem(activeTripKey);
   }
@@ -133,10 +160,11 @@ function writeActiveTripId(tripId?: string) {
 
 function writeFallbackTrip(trip: Trip) {
   if (typeof window === "undefined") return;
-  const trips = [trip, ...readFallbackTrips().filter((item) => item.id !== trip.id)];
+  const safeTrip = stripPhotoDataForFallback(trip);
+  const trips = [safeTrip, ...readFallbackTrips().filter((item) => item.id !== trip.id)];
   writeFallbackTrips(trips);
   writeActiveTripId(trip.id);
-  window.localStorage.setItem(fallbackTripKey, JSON.stringify(trip));
+  safeSetLocalStorage(fallbackTripKey, JSON.stringify(safeTrip));
 }
 
 function removeFallbackTrip(tripId: string) {
@@ -146,7 +174,7 @@ function removeFallbackTrip(tripId: string) {
   if (readActiveTripId() === tripId) {
     writeActiveTripId(trips[0]?.id);
     if (trips[0]) {
-      window.localStorage.setItem(fallbackTripKey, JSON.stringify(trips[0]));
+      safeSetLocalStorage(fallbackTripKey, JSON.stringify(stripPhotoDataForFallback(trips[0])));
     } else {
       window.localStorage.removeItem(fallbackTripKey);
     }
@@ -169,6 +197,127 @@ function writeFallbackStories(stories: ShareStory[]) {
   window.localStorage.setItem(fallbackStoriesKey, JSON.stringify(stories));
 }
 
+function todayIso() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date());
+}
+
+function isDemoOrTestTrip(trip: Trip) {
+  const name = `${trip.id} ${trip.name} ${trip.subtitle ?? ""}`.toLowerCase();
+  return (
+    trip.id === "trip_usa_business_roadtrip_2026" ||
+    /\b(demo|sample|mock|test)\b/.test(name) ||
+    name.includes("old journey")
+  );
+}
+
+function createTodayTrip() {
+  const today = todayIso();
+  return createBlankJourneyTrip({
+    title: "今天",
+    startDate: today,
+    endDate: today
+  });
+}
+
+function createTodayAnchorDay(trip: Trip): JourneyDay {
+  const today = todayIso();
+  return {
+    id: `today_anchor_${today}`,
+    tripId: trip.id,
+    dayNumber: 0,
+    date: today,
+    mode: "free",
+    title: "此刻",
+    city: "此地",
+    routeLabel: "此刻",
+    schedule: [],
+    meals: {},
+    photos: [],
+    notes: [],
+    visibility: "private"
+  };
+}
+
+function ensureTodayAnchor(trip: Trip): Trip {
+  const today = todayIso();
+  if (trip.days.some((day) => day.date === today)) return trip;
+  if (trip.endDate < today) return trip;
+
+  const days = [...trip.days, createTodayAnchorDay(trip)].sort((a, b) => a.date.localeCompare(b.date));
+  return {
+    ...trip,
+    startDate: days[0]?.date ?? trip.startDate,
+    endDate: days.at(-1)?.date ?? trip.endDate,
+    days: days.map((day, index) => ({
+      ...day,
+      dayNumber: index + 1
+    }))
+  };
+}
+
+async function cleanupDemoAndTestJourneys() {
+  if (typeof window === "undefined" || window.localStorage.getItem(cleanupKey)) return;
+
+  const store = db();
+  const fallbackTrips = readFallbackTrips().filter((trip) => !isDemoOrTestTrip(trip));
+  writeFallbackTrips(fallbackTrips);
+  if (fallbackTrips.length) {
+    const activeId = readActiveTripId();
+    const nextActive = fallbackTrips.find((trip) => trip.id === activeId) ?? fallbackTrips[0];
+    writeActiveTripId(nextActive.id);
+    safeSetLocalStorage(fallbackTripKey, JSON.stringify(stripPhotoDataForFallback(nextActive)));
+  } else {
+    writeActiveTripId(undefined);
+    window.localStorage.removeItem(fallbackTripKey);
+  }
+
+  try {
+    if (store) {
+      const trips = await withStorageTimeout(store.trips.toArray(), []);
+      const demoIds = trips.filter(isDemoOrTestTrip).map((trip) => trip.id);
+      if (demoIds.length) {
+        await store.transaction(
+          "rw",
+          [
+            store.trips,
+            store.journeyDays,
+            store.scheduleItems,
+            store.hotels,
+            store.meals,
+            store.notes,
+            store.photos,
+            store.shareStories
+          ],
+          async () => {
+            await Promise.all(
+              demoIds.map(async (tripId) => {
+                await store.trips.delete(tripId);
+                await store.journeyDays.where("tripId").equals(tripId).delete();
+                await store.scheduleItems.where("tripId").equals(tripId).delete();
+                await store.hotels.where("tripId").equals(tripId).delete();
+                await store.meals.where("tripId").equals(tripId).delete();
+                await store.notes.where("tripId").equals(tripId).delete();
+                await store.photos.where("tripId").equals(tripId).delete();
+                await store.shareStories.where("tripId").equals(tripId).delete();
+              })
+            );
+          }
+        );
+      }
+    }
+  } catch {
+    // Local fallback cleanup already ran.
+  }
+
+  writeFallbackStories(readFallbackStories().filter((story) => !isDemoOrTestTrip({ id: story.tripId } as Trip)));
+  window.localStorage.setItem(cleanupKey, "1");
+}
+
 function normalizeVisibility(value: Visibility | "team" | "public", teamFallback: Visibility): Visibility {
   if (value === "team") return teamFallback;
   if (value === "public") return "shareable";
@@ -177,16 +326,17 @@ function normalizeVisibility(value: Visibility | "team" | "public", teamFallback
 
 function applyConstitutionDefaults(trip: Trip): Trip {
   const [owner] = trip.travelers;
+  const anchoredTrip = ensureTodayAnchor(trip);
 
   return {
-    ...trip,
+    ...anchoredTrip,
     travelers: [
       {
         ...(owner ?? { id: "traveler_owner", name: "Traveler", gender: "male" as const, role: "organizer" as const }),
         visibility: "private"
       }
     ],
-    days: trip.days.map((day) => ({
+    days: anchoredTrip.days.map((day) => ({
       ...day,
       visibility: "private",
       hotel: day.hotel ? { ...day.hotel, visibility: "private" } : undefined,
@@ -208,15 +358,7 @@ function applyConstitutionDefaults(trip: Trip): Trip {
         ...note,
         visibility: normalizeVisibility(note.visibility as Visibility | "team", "private")
       })),
-      photos: day.photos?.map((photo) =>
-        photo.tags?.includes("sample")
-          ? {
-              ...photo,
-              visibility: "private",
-              selectedForShare: false
-            }
-          : photo
-      )
+      photos: day.photos
     }))
   };
 }
@@ -277,19 +419,21 @@ async function persistEntityTables(trip: Trip) {
 }
 
 export async function getOrCreateTrip() {
+  await cleanupDemoAndTestJourneys();
   const store = db();
   const activeTripId = readActiveTripId();
+  const today = todayIso();
   try {
     if (store && activeTripId) {
       const active = await withStorageTimeout(store.trips.get(activeTripId), undefined);
-      if (active) {
+      if (active && active.endDate >= today) {
         const normalized = applyConstitutionDefaults(active);
         writeFallbackTrip(normalized);
         return normalized;
       }
     }
     const existing = store ? await withStorageTimeout(store.trips.orderBy("updatedAt").last(), undefined) : undefined;
-    if (existing) {
+    if (existing && existing.endDate >= today) {
       const normalized = applyConstitutionDefaults(existing);
       if (JSON.stringify(normalized) !== JSON.stringify(existing)) {
         await saveTrip(normalized);
@@ -304,14 +448,15 @@ export async function getOrCreateTrip() {
   }
 
   const fallbackTrips = readFallbackTrips().map(applyConstitutionDefaults);
-  const activeFallback = fallbackTrips.find((trip) => trip.id === activeTripId);
+  const activeFallback = fallbackTrips.find((trip) => trip.id === activeTripId && trip.endDate >= today);
   if (activeFallback) return activeFallback;
-  if (fallbackTrips[0]) return fallbackTrips[0];
+  const openFallback = fallbackTrips.find((trip) => trip.endDate >= today);
+  if (openFallback) return openFallback;
 
   const fallback = readFallbackTrip();
-  if (fallback) return applyConstitutionDefaults(fallback);
+  if (fallback && fallback.endDate >= today) return applyConstitutionDefaults(fallback);
 
-  const trip = createMockTrip();
+  const trip = createTodayTrip();
   await saveTrip(trip);
   return trip;
 }
@@ -330,6 +475,7 @@ export async function getTrip(id: string) {
 }
 
 export async function getTrips() {
+  await cleanupDemoAndTestJourneys();
   const store = db();
   try {
     const trips = store ? await withStorageTimeout(store.trips.orderBy("updatedAt").reverse().toArray(), []) : [];
@@ -349,7 +495,7 @@ export async function activateTrip(tripId: string) {
   if (!trip) return undefined;
   writeActiveTripId(trip.id);
   if (typeof window !== "undefined") {
-    window.localStorage.setItem(fallbackTripKey, JSON.stringify(trip));
+    safeSetLocalStorage(fallbackTripKey, JSON.stringify(stripPhotoDataForFallback(trip)));
   }
   return trip;
 }
@@ -408,7 +554,7 @@ export async function deleteTrip(tripId: string) {
   if (next) {
     writeActiveTripId(next.id);
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(fallbackTripKey, JSON.stringify(next));
+      safeSetLocalStorage(fallbackTripKey, JSON.stringify(stripPhotoDataForFallback(next)));
     }
   } else {
     writeActiveTripId(undefined);
@@ -416,8 +562,8 @@ export async function deleteTrip(tripId: string) {
   return next;
 }
 
-export async function resetTripToMock() {
-  const trip = createMockTrip();
+export async function resetToTodayTrip() {
+  const trip = createTodayTrip();
   return saveTrip(trip);
 }
 

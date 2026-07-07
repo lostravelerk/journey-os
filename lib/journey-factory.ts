@@ -36,8 +36,8 @@ function createBlankDay(input: {
     date: input.date,
     mode: "free",
     title: input.dayNumber === 1 ? input.journeyTitle : `Day ${input.dayNumber}`,
-    city: "Place to remember",
-    routeLabel: input.dayNumber === 1 ? input.journeyTitle : `Day ${input.dayNumber}`,
+    city: "此地",
+    routeLabel: input.dayNumber === 1 ? input.journeyTitle : "此刻",
     schedule: [],
     meals: {},
     photos: [],
@@ -52,7 +52,7 @@ export function createBlankJourneyTrip(input: {
   endDate?: string;
 }): Trip {
   const now = new Date().toISOString();
-  const title = input.title?.trim() || "Untitled Journey";
+  const title = input.title?.trim() || "今天";
   const startDate = normalizeDate(input.startDate);
   const endDate = normalizeDate(input.endDate || startDate);
   const id = makeId("journey");

@@ -2,14 +2,14 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, CalendarDays, FileText, NotebookPen, Plus, Sparkles, Trash2, Upload } from "lucide-react";
+import { FileText, NotebookPen, Plus, Sparkles, Trash2, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, Section } from "@/components/ui/card";
 import { Input, Label, Textarea } from "@/components/ui/field";
 import { useJourney } from "@/components/journey-provider";
-import { getJourneyReferenceLabel } from "@/lib/engines/journey-engine";
 import { analyzeFutureJourneyInput, FutureJourneyAnalysis } from "@/lib/future-journey-import";
+import { intelligenceCapabilities } from "@/lib/intelligence/registry";
 import { createBlankJourneyTrip } from "@/lib/journey-factory";
 import { useI18n } from "@/lib/i18n";
 
@@ -78,19 +78,17 @@ export default function JourneysPage() {
     void selectJourney(saved.id);
   }
 
-  async function openJourney(journeyId: string, target: "today" | "calendar") {
+  async function openJourney(journeyId: string) {
     setBusy(true);
     const selected = await selectJourney(journeyId);
     setBusy(false);
     if (!selected) return;
-    if (target === "calendar") {
-      router.push("/calendar");
-      return;
-    }
     router.push("/");
   }
 
-  const visibleJourneys = journeys.length ? journeys : [journey];
+  const today = todayIso();
+  const futureJourneys = (journeys.length ? journeys : [journey]).filter((item) => item.endDate >= today);
+  const visibleJourneys = futureJourneys;
   const canDelete = visibleJourneys.length > 1;
 
   async function removeJourney(journeyId: string) {
@@ -107,6 +105,7 @@ export default function JourneysPage() {
         <div>
           <Badge tone="green">{t("journeys.badge")}</Badge>
           <h1 className="mt-4 text-4xl font-semibold tracking-0 sm:text-6xl">{t("journeys.title")}</h1>
+          <p className="mt-3 max-w-xl text-sm leading-6 text-black/55 dark:text-white/55">{t("journeys.futureSpaceDescription")}</p>
         </div>
         <div className="flex gap-2">
           <input
@@ -193,6 +192,27 @@ export default function JourneysPage() {
         </div>
       </Card>
 
+      <Card className="p-5 sm:p-6">
+        <Badge tone="green">{t("journeys.intelligenceBadge")}</Badge>
+        <div className="mt-4 grid gap-5 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
+          <div>
+            <h2 className="text-3xl font-semibold tracking-0">{t("journeys.intelligenceTitle")}</h2>
+            <p className="mt-3 max-w-xl text-sm leading-6 text-black/55 dark:text-white/55">{t("journeys.intelligenceDescription")}</p>
+          </div>
+          <div className="grid gap-3">
+            {intelligenceCapabilities.map((capability) => (
+              <div key={capability.id} className="rounded-lg border border-black/10 bg-white/45 p-4 dark:border-white/10 dark:bg-white/[0.06]">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-semibold">{t(capability.labelKey)}</p>
+                  <Badge tone="gold">{capability.provider}</Badge>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-black/45 dark:text-white/45">{t("journeys.intelligenceDraftOnly")}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Card>
+
       {draftAnalysis ? (
         <Card className="p-5 sm:p-6">
           <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[0.9fr_1.1fr]">
@@ -245,12 +265,19 @@ export default function JourneysPage() {
       ) : null}
 
       <div className="grid gap-3">
+        {!visibleJourneys.length ? (
+          <Card className="p-5 sm:p-6">
+            <p className="text-2xl font-semibold tracking-0">{t("journeys.emptyFutureTitle")}</p>
+            <p className="mt-3 max-w-xl text-sm leading-6 text-black/55 dark:text-white/55">{t("journeys.emptyFutureDescription")}</p>
+          </Card>
+        ) : null}
+
         {visibleJourneys.map((item) => (
           <Card key={item.id} className="p-5 sm:p-6">
             <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge>{getJourneyReferenceLabel(item)}</Badge>
+                  <Badge>{t("journeys.possibility")}</Badge>
                   {item.id === journey.id ? <Badge tone="green">{t("journeys.open")}</Badge> : null}
                 </div>
                 <h2 className="mt-4 text-3xl font-semibold tracking-0">{item.title}</h2>
@@ -262,14 +289,9 @@ export default function JourneysPage() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button onClick={() => void openJourney(item.id, "today")} disabled={busy}>
+                <Button onClick={() => void openJourney(item.id)} disabled={busy}>
                   <NotebookPen className="h-4 w-4" />
-                  {t("journeys.today")}
-                </Button>
-                <Button variant="secondary" onClick={() => void openJourney(item.id, "calendar")} disabled={busy}>
-                  <CalendarDays className="h-4 w-4" />
-                  {t("journeys.calendar")}
-                  <ArrowRight className="h-4 w-4" />
+                  {t("journeys.enterNow")}
                 </Button>
                 {canDelete ? (
                   pendingDelete === item.id ? (

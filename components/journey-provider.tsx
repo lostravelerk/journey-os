@@ -9,7 +9,7 @@ import {
   getShareStories,
   getTrips,
   importBackupObject,
-  resetTripToMock,
+  resetToTodayTrip,
   saveShareStory,
   saveTrip
 } from "@/lib/local-store";
@@ -34,7 +34,7 @@ type JourneyContextValue = {
   saveStory: (story: ShareStory) => Promise<void>;
   exportBackup: () => Promise<void>;
   importBackup: (file: File) => Promise<void>;
-  resetMock: () => Promise<void>;
+  resetToday: () => Promise<void>;
   refresh: () => Promise<void>;
 };
 
@@ -223,8 +223,8 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
     setShareStories(await getShareStories(nextTrip.id));
   }, []);
 
-  const resetMock = React.useCallback(async () => {
-    const nextTrip = await resetTripToMock();
+  const resetToday = React.useCallback(async () => {
+    const nextTrip = await resetToTodayTrip();
     setTrip(nextTrip);
     setTrips(await getTrips());
     setShareStories(await getShareStories(nextTrip.id));
@@ -247,10 +247,10 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
       saveStory,
       exportBackup,
       importBackup,
-      resetMock,
+      resetToday,
       refresh
     }),
-    [addPhotos, captureMoment, commitTrip, deleteJourney, exportBackup, importBackup, loading, refresh, resetMock, saveStory, selectJourney, shareStories, trip, trips, updateDay]
+    [addPhotos, captureMoment, commitTrip, deleteJourney, exportBackup, importBackup, loading, refresh, resetToday, saveStory, selectJourney, shareStories, trip, trips, updateDay]
   );
 
   return <JourneyContext.Provider value={value}>{children}</JourneyContext.Provider>;

@@ -88,6 +88,21 @@ Self-evolution means:
 
 It does not mean adding features.
 
+## UI Convergence
+
+JourneyOS must continuously reduce:
+
+- visual noise
+- system labels
+- technical indicators
+- duplicate privacy/status hints
+- branding overload
+- ERP-like structures
+
+### Identity Test
+
+If the JourneyOS logo is removed, the screen must still feel complete.
+
 ## Balance
 
 Simplify structure. Deepen memory.

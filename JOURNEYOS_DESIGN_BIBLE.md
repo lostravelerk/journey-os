@@ -1,80 +1,31 @@
 # JOURNEYOS DESIGN BIBLE V1.1
 
-This is the frozen core design constraint for JourneyOS.
+Quick Reference for Core Design Principles.
 
-## Core Philosophy
+All principles are detailed in JOURNEYOS_CONSTITUTION.md.
 
-### 1. Less Is More
+This document is a design decision checklist.
 
-Less is More is the first rule of every design decision.
+## Design Decision Checklist
 
-If a feature, interface element, piece of information, or interaction does not increase experiential clarity, it must be removed or weakened.
+Before building any feature or making a design decision, verify:
 
-### 2. Memory First
+- [ ] Does it serve Memory? (Constitution Article 5)
+- [ ] Does it reduce noise? (Constitution Article 1)
+- [ ] Is it minimal and calm? (Constitution Article 2)
+- [ ] Does it keep data local and private? (Constitution Article 3 & 4)
+- [ ] Is the system invisible to the user? (Constitution Article 2)
+- [ ] Is the journey, not the system, the center? (Constitution Article 8)
+- [ ] Is it designed for one person first? (Constitution Article 9)
+- [ ] Does every screen breathe? (Constitution Article 10)
 
-JourneyOS is not a management system.
+## Reference: Core Capabilities
 
-It is a memory system.
+### Capture The Moment
 
-UI must prioritize memory, emotion, and experience over structure, data, and operation.
+JourneyOS has one primary action: **Capture the Moment**.
 
-### 3. Local First
-
-All data is stored locally by default.
-
-Cloud is not the default path. It may become an optional future capability.
-
-User data belongs to the user first.
-
-### 4. Privacy By Default
-
-Everything is private by default.
-
-Content enters a shareable state only when the user explicitly chooses it.
-
-### 5. UI Must Disappear
-
-The interface exists to be ignored.
-
-When the user enters JourneyOS, they should feel the journey, not the system.
-
-UI carries memory. It does not express itself.
-
-### 6. Logo Must Fade
-
-The JourneyOS logo must not become the visual center.
-
-The logo is a signature, not the subject.
-
-If the UI needs the logo to feel complete, the design has failed.
-
-### 7. Journey Over System
-
-The user should see a day, a journey, a place, or an experience before seeing system structure, feature entry points, or operations.
-
-### 8. Moment Over Product
-
-JourneyOS should not be perceived as a product.
-
-It should feel like an experience already happening.
-
-### 9. Identity Principle
-
-If the JourneyOS logo is covered and the page still feels complete, the design is correct.
-
-Product identity should come from experience, not branding.
-
-### 10. Capture The Moment
-
-JourneyOS does not expose Camera, Location, or Map as separate product features.
-
-JourneyOS has one primary action:
-
-> Capture the Moment.
-
-The user should not operate the camera, map, or location system as software.
-
-The user lives. JourneyOS quietly captures:
+The user should not operate camera, map, or location as software. The user lives. JourneyOS quietly captures:
 
 - photo
 - time
@@ -83,64 +34,34 @@ The user lives. JourneyOS quietly captures:
 - memory line
 - emotion
 
-The result is a Moment, not an attachment, upload, or record.
+### Four Dimensions Of A Moment
 
-### 11. Four Dimensions Of A Moment
+Every Moment has:
 
-Every Moment has four dimensions:
+- **Time**: when this moment happened
+- **Place**: where this moment happened
+- **Memory**: what is worth keeping
+- **Emotion**: what the moment felt like
 
-- Time: when this moment happened
-- Place: where this moment happened
-- Memory: what is worth keeping
-- Emotion: what the moment felt like
+JourneyOS preserves complete Moments, not isolated photos or coordinates.
 
-JourneyOS does not save photos, coordinates, or text as isolated data.
+### Navigation Axes
 
-JourneyOS preserves complete Moments.
+JourneyOS experience is built on two axes:
 
-This is the difference between JourneyOS and travel software: it does not record data. It preserves lived instants.
+- **Time Axis**: Memory → Now → Journey (moving through time)
+- **Space Axis**: spatial memory inside the visual scene (quiet route, place, trace)
 
-### 12. Time Axis And Space Axis
+Map should feel like spatial memory in a photo book, not a map product.
 
-JourneyOS mobile experience is built on two axes:
+## Identity Test
 
-- Time Axis: Memory -> Now -> Journey
-- Space Axis: the quiet route, place, and spatial trace inside the visual scene
+**If the JourneyOS logo is removed, the screen must still feel complete.**
 
-Navigation should feel like moving through time.
-
-Map should feel like spatial memory inside a photo book, not a map product.
-
-## Essence
-
-JourneyOS is not software, a tool, or an app.
-
-It is a way to enter time, preserve Moments, and re-enter memory.
-
-## Final Goal
-
-The final state of JourneyOS:
-
-- the user does not perceive the system
-- the user perceives the journey
-- the user perceives memory
-- the user perceives the present moment
-
-## Forbidden
-
-No design may strengthen:
-
-- system feeling
-- management feeling
-- tool feeling
-- brand presence
-- feature stacking
-- excessive information density
+Product identity comes from experience, not branding.
 
 ## Final Statement
 
 JourneyOS exists to disappear.
 
-Forget the software.
-
-Remember the moment.
+Forget the software. Remember the moment.

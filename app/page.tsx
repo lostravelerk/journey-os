@@ -2,10 +2,12 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Camera, Check, CloudSun, Image as ImageIcon, MapPin, Plus, X } from "lucide-react";
+import { Camera, Check, CloudSun, Image as ImageIcon, MapPin, Plus, Sparkles, X } from "lucide-react";
 import { useJourney } from "@/components/journey-provider";
 import { getCurrentJourneyDay } from "@/lib/engines/journey-engine";
 import { primaryMemory } from "@/lib/engines/memory-engine";
+import { requestJourneyIntelligence } from "@/lib/intelligence/intelligence-service";
+import type { IntelligenceProvider } from "@/lib/intelligence/types";
 import { JourneyDay as DomainDay } from "@/lib/domain";
 import { JourneyDay as TripDay } from "@/lib/schema";
 import { Locale, useI18n } from "@/lib/i18n";
@@ -41,10 +43,6 @@ function isEnglishSampleLine(value?: string) {
   return ascii.length / value.length > 0.85 && value.length > 24;
 }
 
-function dayKey(dayNumber: number) {
-  return `day_${String(dayNumber).padStart(2, "0")}`;
-}
-
 function shortDate(value: string) {
   return value.slice(5).replace("-", ".");
 }
@@ -54,7 +52,9 @@ function fullDate(value: string) {
 }
 
 function quietPlace(day: TripDay) {
-  return (day.city || day.route?.end || day.route?.start || day.title).replace(/\s*->\s*/g, " · ").replace(/\s*\/\s*/g, " · ");
+  const place = day.city || day.route?.end || day.route?.start || day.title;
+  if (place === "Place to remember" || place === "Here") return "此地";
+  return place.replace(/\s*->\s*/g, " · ").replace(/\s*\/\s*/g, " · ");
 }
 
 function monthLabel(value: string, locale: Locale) {
@@ -73,15 +73,7 @@ function localizedWeather(day: TripDay, locale: Locale, fallback: string) {
     return `${description}${highC ? ` · ${highC}°C` : ""}`;
   }
 
-  const descriptionMap = [
-    { key: "Desert heat", value: "沙漠热浪" },
-    { key: "Dry sun", value: "干燥晴朗" },
-    { key: "Humid heat", value: "湿热" },
-    { key: "Mountain night", value: "山间凉意" },
-    { key: "Coastal", value: "海岸天气" }
-  ];
-  const matched = descriptionMap.find((item) => description.includes(item.key));
-  return `${matched?.value ?? fallback}${highC ? ` · ${highC}°C` : ""}`;
+  return `${fallback}${highC ? ` · ${highC}°C` : ""}`;
 }
 
 function memoryNotes(day: TripDay) {
@@ -123,10 +115,6 @@ function momentLine(input: {
   const raw = primaryMemory(input.day)?.content?.trim();
   if (raw && !(input.locale === "zh-CN" && isEnglishSampleLine(raw))) return raw;
 
-  const key = `timeFlow.lines.${dayKey(input.tripDay.dayNumber)}`;
-  const localized = input.t(key);
-  if (localized !== key) return localized;
-
   return input.t("timeFlow.defaultKept");
 }
 
@@ -145,6 +133,10 @@ function splitFragments(day: TripDay) {
     early: early.length ? early : sorted.slice(0, 2),
     late: late.length ? late : sorted.slice(-3)
   };
+}
+
+function fragmentLine(item: TripDay["schedule"][number], t: (key: string, params?: Record<string, string | number>) => string) {
+  return item.notes?.trim() || t("timeFlow.fragmentFallback", { title: item.title });
 }
 
 function FlowingTimeScale({
@@ -253,16 +245,17 @@ function SpatialCurrent({ place, index }: { place: string; index: number }) {
 }
 
 function FragmentStream({
-  title,
-  items
+  items,
+  t
 }: {
-  title: string;
   items: TripDay["schedule"];
+  t: (key: string, params?: Record<string, string | number>) => string;
 }) {
+  if (!items.length) return null;
+
   return (
     <section className="relative py-10">
-      <p className="mb-7 font-serif text-2xl text-white/[0.30]">{title}</p>
-      <svg className="absolute bottom-0 left-3 top-16 w-10" viewBox="0 0 40 260" preserveAspectRatio="none" fill="none" aria-hidden="true">
+      <svg className="absolute bottom-0 left-3 top-0 w-10" viewBox="0 0 40 260" preserveAspectRatio="none" fill="none" aria-hidden="true">
         <path d="M20 0 C3 46 35 89 17 132 C1 172 33 207 18 260" stroke="rgba(255,255,255,.13)" strokeWidth="1" strokeLinecap="round" />
       </svg>
       <div className="space-y-9">
@@ -270,8 +263,8 @@ function FragmentStream({
           <div key={item.id} className="relative pl-12 text-white/[0.68]">
             <span className="absolute left-[14px] top-2 h-2 w-2 rounded-full bg-white/[0.38] shadow-[0_0_18px_rgba(255,255,255,.24)]" />
             <p className="text-xs text-white/[0.38]">{item.time || "--:--"}</p>
-            <p className="mt-1 text-xl font-semibold leading-snug text-white/[0.78]">{item.title}</p>
-            {item.location ? <p className="mt-1 text-sm text-white/[0.40]">{item.location}</p> : null}
+            <p className="mt-1 text-xl font-semibold leading-snug text-white/[0.78]">{fragmentLine(item, t)}</p>
+            <p className="mt-1 text-sm text-white/[0.40]">{[item.title, item.location].filter(Boolean).join(" · ")}</p>
             {index < items.length - 1 ? <span className="mt-5 block h-px w-24 bg-gradient-to-r from-white/[0.14] to-transparent" /> : null}
           </div>
         ))}
@@ -285,8 +278,14 @@ function MomentCaptureSheet({
   draftText,
   selectedCount,
   saving,
+  refining,
+  refineDraft,
   onDraftTextChange,
-  onPickPhotos,
+  onTakePhoto,
+  onChoosePhotos,
+  onRefine,
+  onAcceptRefine,
+  onIgnoreRefine,
   onSave,
   onClose,
   t
@@ -295,8 +294,14 @@ function MomentCaptureSheet({
   draftText: string;
   selectedCount: number;
   saving: boolean;
+  refining: boolean;
+  refineDraft: { result: string; provider: IntelligenceProvider } | null;
   onDraftTextChange: (value: string) => void;
-  onPickPhotos: () => void;
+  onTakePhoto: () => void;
+  onChoosePhotos: () => void;
+  onRefine: () => Promise<void>;
+  onAcceptRefine: () => void;
+  onIgnoreRefine: () => void;
   onSave: () => Promise<void>;
   onClose: () => void;
   t: (key: string, params?: Record<string, string | number>) => string;
@@ -332,26 +337,78 @@ function MomentCaptureSheet({
 
         <textarea
           value={draftText}
-          onChange={(event) => onDraftTextChange(event.currentTarget.value)}
+          onChange={(event) => {
+            onDraftTextChange(event.currentTarget.value);
+            onIgnoreRefine();
+          }}
           placeholder={t("timeFlow.capturePlaceholder")}
           className="mt-7 min-h-32 w-full resize-none rounded-none border-0 border-b border-black/[0.18] bg-transparent px-0 py-3 text-2xl leading-relaxed text-black outline-none placeholder:text-black/[0.32]"
         />
 
-        <div className="mt-6 flex items-center justify-between gap-3">
+        {draftText.trim() ? (
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={() => void onRefine()}
+              disabled={refining}
+              className="inline-flex min-h-10 items-center gap-2 rounded-full bg-black/[0.06] px-4 text-sm font-semibold text-black/[0.58] transition active:scale-95 disabled:opacity-40"
+            >
+              <Sparkles className="h-4 w-4" />
+              <span>{refining ? t("timeFlow.refining") : t("timeFlow.refine")}</span>
+            </button>
+          </div>
+        ) : null}
+
+        {refineDraft ? (
+          <div className="mt-4 rounded-[1.25rem] bg-white/60 px-4 py-4 shadow-[0_12px_40px_rgba(0,0,0,.06)]">
+            <p className="text-xs uppercase tracking-[0.16em] text-black/[0.34]">{t("timeFlow.aiDraft", { provider: refineDraft.provider })}</p>
+            <p className="mt-2 text-xl font-semibold leading-relaxed text-black/[0.78]">{refineDraft.result}</p>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={onAcceptRefine}
+                className="rounded-full bg-[#151711] px-4 py-2 text-sm font-semibold text-white transition active:scale-95"
+              >
+                {t("timeFlow.acceptDraft")}
+              </button>
+              <button
+                type="button"
+                onClick={onIgnoreRefine}
+                className="rounded-full bg-black/[0.06] px-4 py-2 text-sm font-semibold text-black/[0.54] transition active:scale-95"
+              >
+                {t("timeFlow.ignoreDraft")}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="mt-6 grid grid-cols-2 gap-3">
           <button
             type="button"
-            onClick={onPickPhotos}
-            className="inline-flex items-center gap-2 rounded-full bg-black/[0.07] px-4 py-3 text-sm font-semibold text-black/[0.68] transition active:scale-95"
+            onClick={onTakePhoto}
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-black/[0.07] px-4 text-sm font-semibold text-black/[0.68] transition active:scale-95"
+          >
+            <Camera className="h-4 w-4" />
+            <span>{t("timeFlow.takePhoto")}</span>
+          </button>
+          <button
+            type="button"
+            onClick={onChoosePhotos}
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-black/[0.07] px-4 text-sm font-semibold text-black/[0.68] transition active:scale-95"
           >
             <ImageIcon className="h-4 w-4" />
-            <span>{selectedCount ? t("timeFlow.selectedPhotos", { count: selectedCount }) : t("timeFlow.addPhoto")}</span>
+            <span>{t("timeFlow.chooseFromAlbum")}</span>
           </button>
+        </div>
+
+        <div className="mt-5 flex items-center justify-between gap-3">
+          <p className="text-sm font-medium text-black/[0.46]">{selectedCount ? t("timeFlow.selectedPhotos", { count: selectedCount }) : t("timeFlow.addPhoto")}</p>
           <button
             type="submit"
             disabled={!canSave || saving}
             className="inline-flex items-center gap-2 rounded-full bg-[#151711] px-5 py-3 text-sm font-semibold text-white transition active:scale-95 disabled:opacity-35"
           >
-            <Camera className="h-4 w-4" />
+            <Check className="h-4 w-4" />
             <span>{saving ? t("timeFlow.saving") : t("timeFlow.saveLocal")}</span>
           </button>
         </div>
@@ -384,6 +441,7 @@ function SavedMomentSheet({
   const isFuture = phase === "future";
   const memories = memoryNotes(day);
   const photos = day.photos ?? [];
+  const visiblePhotos = photos.filter((photo) => Boolean(photo.localUrl));
   const hasSavedContent = isFuture ? day.schedule.length > 0 || Boolean(day.hotel) : memories.length > 0 || photos.length > 0;
 
   return (
@@ -478,12 +536,16 @@ function SavedMomentSheet({
           </div>
         ) : hasSavedContent ? (
           <div className="mt-6 space-y-6">
-            {photos.length ? (
+            {visiblePhotos.length ? (
               <div className="grid grid-cols-3 gap-2">
-                {photos.slice(0, 6).map((photo) => (
-                  <img key={photo.id} src={photo.localUrl} alt={photo.caption ?? t("timeFlow.imageAlt")} className="aspect-square w-full object-cover" />
+                {visiblePhotos.slice(0, 6).map((photo) => (
+                  <img key={photo.id} src={photo.localUrl ?? ""} alt={photo.caption ?? t("timeFlow.imageAlt")} className="aspect-square w-full object-cover" />
                 ))}
               </div>
+            ) : null}
+
+            {photos.length > visiblePhotos.length ? (
+              <p className="rounded-[1.25rem] bg-black/[0.04] px-4 py-3 text-sm leading-relaxed text-black/[0.52]">{t("timeFlow.photoUnavailable")}</p>
             ) : null}
 
             {memories.length ? (
@@ -514,6 +576,7 @@ function MomentScreen({
   isTodayMoment,
   locale,
   clock,
+  onOpenMoment,
   t
 }: {
   day: DomainDay;
@@ -524,16 +587,20 @@ function MomentScreen({
   isTodayMoment: boolean;
   locale: Locale;
   clock: string;
+  onOpenMoment: (dayId: string) => void;
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
   const panelRef = React.useRef<HTMLElement>(null);
   const anchorRef = React.useRef<HTMLDivElement>(null);
   const photos = tripDay.photos ?? [];
-  const image = photos[0]?.localUrl ?? fallbackImages[index % fallbackImages.length];
+  const visiblePhotos = photos.filter((photo) => Boolean(photo.localUrl));
+  const image = visiblePhotos[0]?.localUrl ?? fallbackImages[index % fallbackImages.length];
   const place = quietPlace(tripDay);
   const line = momentLine({ day, tripDay, locale, phase, t });
   const fragments = splitFragments(tripDay);
   const isFuture = phase === "future";
+  const isQuietEmptyLine = line === t("timeFlow.defaultKept");
+  const hasSavedMomentContent = !isFuture && (photos.length > 0 || memoryNotes(tripDay).length > 0);
 
   React.useEffect(() => {
     const panel = panelRef.current;
@@ -549,7 +616,7 @@ function MomentScreen({
       aria-label={line}
     >
       <div className="sticky top-0 z-0 h-[100dvh] overflow-hidden">
-        <img src={image} alt={photos[0]?.caption ?? t("timeFlow.imageAlt")} className="absolute inset-0 h-full w-full object-cover" />
+        <img src={image} alt={visiblePhotos[0]?.caption ?? t("timeFlow.imageAlt")} className="absolute inset-0 h-full w-full object-cover" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_46%_28%,rgba(255,255,255,.12),transparent_26%),linear-gradient(180deg,rgba(8,10,8,.18),rgba(8,10,8,.36)_42%,rgba(8,10,8,.88))]" />
         <div className="absolute inset-x-0 top-0 z-20">
           <FlowingTimeScale moments={moments} focusIndex={index} locale={locale} />
@@ -558,7 +625,7 @@ function MomentScreen({
 
       <div className="relative z-10 -mt-[100dvh] min-h-[205dvh] px-6 pb-[calc(env(safe-area-inset-bottom)+5rem)]">
         <div className="mx-auto max-w-[34rem] pt-[calc(env(safe-area-inset-top)+9rem)]">
-          <FragmentStream title={t("timeFlow.before")} items={fragments.early} />
+          <FragmentStream items={fragments.early} t={t} />
 
           <div ref={anchorRef} className="flex min-h-[100dvh] flex-col justify-end pb-[14dvh] pt-12">
             <div className="max-w-[34rem]">
@@ -567,7 +634,12 @@ function MomentScreen({
                 <span>{isTodayMoment ? clock || "--:--" : isFuture ? t("timeFlow.futureStatus") : localizedWeather(tripDay, locale, t("timeFlow.weatherFallback"))}</span>
               </div>
 
-              <h1 className="max-w-[21rem] font-serif text-[3.25rem] font-semibold leading-[1.03] text-white drop-shadow-[0_18px_46px_rgba(0,0,0,.36)] sm:max-w-[30rem] sm:text-7xl">
+              <h1
+                className={[
+                  "max-w-[22rem] font-serif font-semibold leading-[1.06] text-white drop-shadow-[0_18px_46px_rgba(0,0,0,.36)] sm:max-w-[30rem]",
+                  isQuietEmptyLine ? "text-[2.9rem] sm:text-6xl" : "text-[3.25rem] sm:text-7xl"
+                ].join(" ")}
+              >
                 {line}
               </h1>
 
@@ -586,21 +658,26 @@ function MomentScreen({
                         : t("timeFlow.waitingPhoto")}
                   </span>
                 </p>
+                {hasSavedMomentContent ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenMoment(tripDay.id)}
+                    className="inline-flex min-h-10 items-center rounded-full bg-white/[0.14] px-4 text-sm font-semibold text-white/[0.78] shadow-[0_16px_44px_rgba(0,0,0,.18)] backdrop-blur-xl transition active:scale-95"
+                  >
+                    {t("timeFlow.viewKeptMoment")}
+                  </button>
+                ) : null}
               </div>
 
             </div>
           </div>
 
-          <FragmentStream title={t("timeFlow.after")} items={fragments.late} />
-
-          <section className="py-10">
-            <p className="font-serif text-2xl text-white/[0.32]">{t("timeFlow.placeTrace")}</p>
-            <SpatialCurrent place={place} index={index} />
-          </section>
+          <FragmentStream items={fragments.late} t={t} />
 
           <section className="py-12 text-white/[0.72]">
-            <p className="font-serif text-2xl text-white/[0.32]">{t("timeFlow.memoryMatter")}</p>
+            <p className="font-serif text-2xl text-white/[0.32]">{t("timeFlow.momentDepth")}</p>
             <p className="mt-5 max-w-[28rem] text-2xl font-semibold leading-relaxed text-white/[0.80]">{line}</p>
+            <SpatialCurrent place={place} index={index} />
           </section>
         </div>
       </div>
@@ -611,7 +688,8 @@ function MomentScreen({
 export default function JourneyFlowPage() {
   const { journey, trip, loading, captureMoment } = useJourney();
   const { t, locale, setLocale } = useI18n();
-  const capturePhotoInputRef = React.useRef<HTMLInputElement>(null);
+  const cameraInputRef = React.useRef<HTMLInputElement>(null);
+  const albumInputRef = React.useRef<HTMLInputElement>(null);
   const touchStartRef = React.useRef<{ x: number; y: number } | null>(null);
   const [capturing, setCapturing] = React.useState(false);
   const [clock, setClock] = React.useState("");
@@ -620,6 +698,8 @@ export default function JourneyFlowPage() {
   const [savedDayId, setSavedDayId] = React.useState<string | null>(null);
   const [draftText, setDraftText] = React.useState("");
   const [draftFiles, setDraftFiles] = React.useState<File[]>([]);
+  const [refining, setRefining] = React.useState(false);
+  const [refineDraft, setRefineDraft] = React.useState<{ result: string; provider: IntelligenceProvider } | null>(null);
 
   const currentIso = todayIso();
   const currentJourneyDay = journey ? getCurrentJourneyDay(journey, currentIso) : null;
@@ -681,9 +761,27 @@ export default function JourneyFlowPage() {
     setCaptureDayId(null);
     setDraftFiles([]);
     setDraftText("");
-    if (capturePhotoInputRef.current) {
-      capturePhotoInputRef.current.value = "";
-    }
+    setRefineDraft(null);
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
+    if (albumInputRef.current) albumInputRef.current.value = "";
+  }
+
+  function appendDraftFiles(files: FileList | null) {
+    const nextFiles = Array.from(files ?? []);
+    if (!nextFiles.length) return;
+    setDraftFiles((current) => [...current, ...nextFiles]);
+  }
+
+  function openCamera() {
+    if (!cameraInputRef.current) return;
+    cameraInputRef.current.value = "";
+    cameraInputRef.current.click();
+  }
+
+  function openAlbum() {
+    if (!albumInputRef.current) return;
+    albumInputRef.current.value = "";
+    albumInputRef.current.click();
   }
 
   async function handleCapture() {
@@ -693,10 +791,30 @@ export default function JourneyFlowPage() {
 
     setCapturing(true);
     try {
+      const savedId = captureTarget.id;
       await captureMoment(captureTarget.id, draftFiles, draftText.trim() || t("timeFlow.autoMomentLine"));
       closeCapture();
+      setSavedDayId(savedId);
     } finally {
       setCapturing(false);
+    }
+  }
+
+  async function refineMomentText() {
+    if (!captureTarget || !draftText.trim()) return;
+    setRefining(true);
+    try {
+      const response = await requestJourneyIntelligence({
+        type: "memory_line",
+        input: {
+          text: draftText.trim(),
+          place: quietPlace(captureTarget),
+          time: `${captureTarget.date} ${clock || ""}`.trim()
+        }
+      });
+      setRefineDraft({ result: response.result, provider: response.provider });
+    } finally {
+      setRefining(false);
     }
   }
 
@@ -737,13 +855,20 @@ export default function JourneyFlowPage() {
       className="h-[100dvh] overflow-hidden bg-[#0f110d] text-white"
     >
       <input
-        ref={capturePhotoInputRef}
+        ref={cameraInputRef}
         type="file"
         accept="image/*"
         capture="environment"
+        className="hidden"
+        onChange={(event) => appendDraftFiles(event.currentTarget.files)}
+      />
+      <input
+        ref={albumInputRef}
+        type="file"
+        accept="image/*"
         multiple
         className="hidden"
-        onChange={(event) => setDraftFiles(Array.from(event.currentTarget.files ?? []))}
+        onChange={(event) => appendDraftFiles(event.currentTarget.files)}
       />
       <div className="relative z-10 h-[100dvh] overflow-hidden" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
         <div
@@ -761,17 +886,19 @@ export default function JourneyFlowPage() {
             isTodayMoment={tripDay.id === currentTripDay.id}
             locale={locale}
             clock={clock}
+            onOpenMoment={setSavedDayId}
             t={t}
           />
         ))}
         </div>
       </div>
-      <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+1rem)] z-40 flex items-center justify-center gap-3 px-5">
+      <div className="fixed inset-x-0 bottom-0 z-40 bg-gradient-to-t from-black/70 via-black/28 to-transparent px-5 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-7">
+        <div className="mx-auto flex max-w-[20rem] flex-col items-center gap-3">
         {activePhase === "future" ? (
           <button
             type="button"
             onClick={() => setSavedDayId(activeTripDay.id)}
-            className="inline-flex min-h-14 w-full max-w-[22rem] items-center justify-center gap-2 rounded-full bg-white/[0.92] px-5 text-base font-semibold text-[#151711] shadow-[0_18px_52px_rgba(0,0,0,.28)] backdrop-blur-xl transition active:scale-[.98]"
+            className="inline-flex h-16 min-w-[9.5rem] items-center justify-center rounded-full bg-white/[0.18] px-6 text-base font-semibold text-white shadow-[0_18px_52px_rgba(0,0,0,.26)] backdrop-blur-2xl transition active:scale-[.98]"
           >
             <span>{t("timeFlow.openFuture")}</span>
           </button>
@@ -780,20 +907,42 @@ export default function JourneyFlowPage() {
             type="button"
             aria-label={t("timeFlow.captureAria")}
             onClick={() => openCapture(activeTripDay.id)}
-            className="inline-flex min-h-14 w-full max-w-[22rem] items-center justify-center gap-2 rounded-full bg-white/[0.92] px-5 text-base font-semibold text-[#151711] shadow-[0_18px_52px_rgba(0,0,0,.28)] backdrop-blur-xl transition active:scale-[.98]"
+            className="group inline-flex flex-col items-center gap-2 text-white transition active:scale-[.98]"
           >
-            <Plus className="h-5 w-5" />
-            <span>{t("timeFlow.capture")}</span>
+            <span className="grid h-16 w-16 place-items-center rounded-full bg-white/[0.94] text-[#151711] shadow-[0_18px_52px_rgba(0,0,0,.28)] backdrop-blur-2xl">
+              <Plus className="h-7 w-7" />
+            </span>
+            <span className="text-sm font-semibold text-white/[0.82]">{t("timeFlow.capture")}</span>
           </button>
         )}
+          {activePhase !== "future" && (activeTripDay.photos?.length || memoryNotes(activeTripDay).length) ? (
+            <button
+              type="button"
+              onClick={() => setSavedDayId(activeTripDay.id)}
+              className="text-xs font-semibold text-white/[0.56] transition active:scale-95"
+            >
+              {t("timeFlow.viewKeptMoment")}
+            </button>
+          ) : null}
+        </div>
       </div>
       <MomentCaptureSheet
         open={Boolean(captureDayId)}
         draftText={draftText}
         selectedCount={draftFiles.length}
         saving={capturing}
+        refining={refining}
+        refineDraft={refineDraft}
         onDraftTextChange={setDraftText}
-        onPickPhotos={() => capturePhotoInputRef.current?.click()}
+        onTakePhoto={openCamera}
+        onChoosePhotos={openAlbum}
+        onRefine={refineMomentText}
+        onAcceptRefine={() => {
+          if (!refineDraft) return;
+          setDraftText(refineDraft.result);
+          setRefineDraft(null);
+        }}
+        onIgnoreRefine={() => setRefineDraft(null)}
         onSave={handleCapture}
         onClose={closeCapture}
         t={t}
