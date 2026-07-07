@@ -16,6 +16,8 @@ type ImportedRow = {
   type?: ScheduleItem["type"];
 };
 
+export const structuredJourneyImportExtensions = ["json", "csv", "tsv", "txt", "md", "xlsx", "xls"];
+
 const headerMap: Record<keyof ImportedRow, string[]> = {
   date: ["date", "日期", "时间日期", "出发日期"],
   dayNumber: ["day", "天", "第几天", "日程"],
@@ -51,6 +53,19 @@ function parseDate(value: CellValue): string | undefined {
 
   const raw = text(value);
   if (!raw) return undefined;
+
+  const iso = raw.match(/(20\d{2})[./\-年](\d{1,2})[./\-月](\d{1,2})/);
+  if (iso) {
+    const [, year, month, day] = iso;
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+
+  const chineseMonthDay = raw.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]?/);
+  if (chineseMonthDay) {
+    const [, month, day] = chineseMonthDay;
+    return `2026-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+
   const normalized = raw
     .replace(/[年月.]/g, "-")
     .replace(/[日号]/g, "")
@@ -62,6 +77,12 @@ function parseDate(value: CellValue): string | undefined {
   const monthDay = normalized.match(/^(\d{1,2})-(\d{1,2})$/);
   if (monthDay) {
     const [, month, day] = monthDay;
+    return `2026-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+
+  const embeddedMonthDay = normalized.match(/(?:^|\D)(\d{1,2})-(\d{1,2})(?:\D|$)/);
+  if (embeddedMonthDay) {
+    const [, month, day] = embeddedMonthDay;
     return `2026-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
   }
 
@@ -130,7 +151,12 @@ function rowFromHeader(row: CellValue[], headers: CellValue[]): ImportedRow {
 function rowWithoutHeader(row: CellValue[], index: number): ImportedRow {
   const cells = row.map(text).filter(Boolean);
   const date = row.map(parseDate).find(Boolean);
-  const title = cells.find((cell) => !parseDate(cell)) ?? `Day ${index + 1}`;
+  const titleFromDatedLine = cells[0]
+    ?.replace(/(20\d{2})[./\-年](\d{1,2})[./\-月](\d{1,2})[日号]?/g, "")
+    .replace(/(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]?/g, "")
+    .replace(/(?:^|\D)(\d{1,2})[./-](\d{1,2})(?:\D|$)/, " ")
+    .trim();
+  const title = cells.find((cell) => !parseDate(cell)) || titleFromDatedLine || `Day ${index + 1}`;
 
   return {
     date,
@@ -174,7 +200,7 @@ function scheduleFromRow(row: ImportedRow, tripId: string, dayId: string, index:
   };
 }
 
-function buildTrip(rows: ImportedRow[], fallbackTitle: string): Trip {
+export function buildTrip(rows: ImportedRow[], fallbackTitle: string): Trip {
   const datedRows = rows.length ? rows : [{ title: fallbackTitle, date: new Date().toISOString().slice(0, 10) }];
   const dates = Array.from(new Set(datedRows.map((row) => row.date).filter(Boolean))) as string[];
   const startDate = dates[0] ?? new Date().toISOString().slice(0, 10);
@@ -237,6 +263,10 @@ function parsePlainText(textValue: string): CellValue[][] {
     .filter((row) => row[0]);
 }
 
+export function parseJourneyText(textValue: string, fallbackTitle = "Future Journey"): Trip {
+  return buildTrip(parseRows(parsePlainText(textValue)), fallbackTitle);
+}
+
 function tripFromJson(value: unknown, fallbackTitle: string): Trip {
   const input = value as { trip?: Trip; trips?: Trip[]; name?: string; title?: string; days?: unknown[] };
   if (input.trip?.days) return input.trip;
@@ -277,5 +307,5 @@ export async function parseJourneyFile(file: File): Promise<Trip> {
     return buildTrip(parseRows(rows), fallbackTitle);
   }
 
-  return buildTrip(parseRows(parsePlainText(await file.text())), fallbackTitle);
+  return parseJourneyText(fallbackTitle, fallbackTitle);
 }
