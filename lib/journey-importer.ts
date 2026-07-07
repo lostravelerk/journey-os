@@ -211,15 +211,7 @@ function buildTrip(rows: ImportedRow[], fallbackTitle: string): Trip {
           }
         : undefined,
       schedule,
-      notes: dayRows
-        .filter((row) => row.note)
-        .map((row, index) => ({
-          id: `${dayId}_note_${index + 1}`,
-          type: "memory" as const,
-          content: row.note!,
-          createdAt: new Date().toISOString(),
-          visibility: "private" as const
-        }))
+      notes: []
     };
   });
 

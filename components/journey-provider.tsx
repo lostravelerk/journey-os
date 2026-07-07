@@ -30,7 +30,7 @@ type JourneyContextValue = {
   deleteJourney: (journeyId: string) => Promise<Trip | undefined>;
   updateDay: (dayId: string, updater: (day: Trip["days"][number]) => Trip["days"][number]) => Promise<void>;
   addPhotos: (dayId: string, files: FileList | File[]) => Promise<void>;
-  captureMoment: (dayId: string, files: FileList | File[], memoryContent: string) => Promise<void>;
+  captureMoment: (dayId: string, files: FileList | File[] | null | undefined, memoryContent: string) => Promise<void>;
   saveStory: (story: ShareStory) => Promise<void>;
   exportBackup: () => Promise<void>;
   importBackup: (file: File) => Promise<void>;
@@ -39,6 +39,33 @@ type JourneyContextValue = {
 };
 
 const JourneyContext = React.createContext<JourneyContextValue | undefined>(undefined);
+
+function todayIso() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date());
+}
+
+function clearFutureMomentData(trip: Trip) {
+  const today = todayIso();
+  let changed = false;
+
+  const days = trip.days.map((day) => {
+    if (day.date <= today) return day;
+    if (!(day.notes?.length || day.photos?.length)) return day;
+    changed = true;
+    return {
+      ...day,
+      notes: [],
+      photos: []
+    };
+  });
+
+  return changed ? { ...trip, days } : trip;
+}
 
 function fileToDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -57,7 +84,11 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
-    const nextTrip = await getOrCreateTrip();
+    const loadedTrip = await getOrCreateTrip();
+    const nextTrip = clearFutureMomentData(loadedTrip);
+    if (nextTrip !== loadedTrip) {
+      await saveTrip(nextTrip);
+    }
     setTrip(nextTrip);
     setTrips(await getTrips());
     setShareStories(await getShareStories(nextTrip.id));
@@ -69,7 +100,7 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
   }, [refresh]);
 
   const commitTrip = React.useCallback(async (nextTrip: Trip) => {
-    const saved = await saveTrip(nextTrip);
+    const saved = await saveTrip(clearFutureMomentData(nextTrip));
     setTrip(saved);
     setTrips(await getTrips());
     setShareStories(await getShareStories(saved.id));
@@ -129,9 +160,12 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
   );
 
   const captureMoment = React.useCallback(
-    async (dayId: string, files: FileList | File[], memoryContent: string) => {
+    async (dayId: string, files: FileList | File[] | null | undefined, memoryContent: string) => {
       if (!trip) return;
-      const fileArray = Array.from(files);
+      const content = memoryContent.trim();
+      const fileArray = files ? Array.from(files) : [];
+      if (!content && !fileArray.length) return;
+
       const urls = await Promise.all(fileArray.map(fileToDataUrl));
       const now = new Date().toISOString();
       const photos: PhotoItem[] = urls.map((localUrl, index) => ({
@@ -139,25 +173,27 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
         tripId: trip.id,
         dayId,
         localUrl,
-        caption: fileArray[index]?.name.replace(/\.[^.]+$/, "") || memoryContent,
+        caption: fileArray[index]?.name.replace(/\.[^.]+$/, "") || content || "Journey moment",
         tags: ["moment"],
         visibility: "private",
         selectedForShare: false
       }));
-      const memory: NoteItem = {
-        id: makeId("note"),
-        type: "memory",
-        content: memoryContent,
-        createdAt: now,
-        visibility: "private"
-      };
+      const memory: NoteItem | null = content
+        ? {
+            id: makeId("note"),
+            type: "memory",
+            content,
+            createdAt: now,
+            visibility: "private"
+          }
+        : null;
 
       await updateDay(dayId, (day) => {
         const notes = day.notes ?? [];
 
         return {
           ...day,
-          notes: [...notes, memory],
+          notes: memory ? [...notes, memory] : notes,
           photos: [...(day.photos ?? []), ...photos]
         };
       });
