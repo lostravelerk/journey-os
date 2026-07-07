@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Camera, CloudSun, Image as ImageIcon, MapPin, Plus, X } from "lucide-react";
+import { Camera, Check, CloudSun, Image as ImageIcon, MapPin, Plus, X } from "lucide-react";
 import { useJourney } from "@/components/journey-provider";
 import { getCurrentJourneyDay } from "@/lib/engines/journey-engine";
 import { primaryMemory } from "@/lib/engines/memory-engine";
@@ -367,6 +367,7 @@ function SavedMomentSheet({
   day,
   phase,
   locale,
+  setLocale,
   onClose,
   t
 }: {
@@ -374,6 +375,7 @@ function SavedMomentSheet({
   day: TripDay | null;
   phase: TimePhase;
   locale: Locale;
+  setLocale: (locale: Locale) => void;
   onClose: () => void;
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
@@ -410,18 +412,53 @@ function SavedMomentSheet({
           <p className="mt-2 text-sm leading-relaxed text-black/[0.56]">{isFuture ? t("timeFlow.futureBoundaryLine") : t("timeFlow.localStorageLine")}</p>
         </div>
 
-        <div className="mt-5 flex items-center justify-between gap-4 rounded-[1.25rem] bg-black/[0.035] px-4 py-4">
-          <p className="text-sm leading-relaxed text-black/[0.56]">{t("timeFlow.importPlanHelp")}</p>
-          <Link
-            href="/journeys"
-            className="shrink-0 rounded-full bg-black/[0.08] px-4 py-2 text-sm font-semibold text-black/[0.66] transition active:scale-95"
-          >
-            {t("timeFlow.importPlan")}
-          </Link>
-        </div>
-
         {isFuture ? (
           <div className="mt-6 space-y-5">
+            <section className="rounded-[1.25rem] bg-black/[0.035] px-4 py-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-black/[0.34]">{t("timeFlow.variableSpace")}</p>
+              <p className="mt-2 text-sm leading-relaxed text-black/[0.56]">{t("timeFlow.variableSpaceLine")}</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link
+                  href="/journeys"
+                  className="rounded-full bg-black/[0.08] px-4 py-2 text-sm font-semibold text-black/[0.66] transition active:scale-95"
+                >
+                  {t("timeFlow.manageJourney")}
+                </Link>
+                <Link
+                  href="/journeys"
+                  className="rounded-full bg-black/[0.08] px-4 py-2 text-sm font-semibold text-black/[0.66] transition active:scale-95"
+                >
+                  {t("timeFlow.importPlan")}
+                </Link>
+              </div>
+            </section>
+
+            <section className="rounded-[1.25rem] bg-black/[0.035] px-4 py-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-black/[0.34]">{t("settings.language")}</p>
+              <div className="mt-4 grid gap-2">
+                {[
+                  { value: "zh-CN" as const, label: t("settings.chinese") },
+                  { value: "en-US" as const, label: t("settings.english") }
+                ].map((option) => {
+                  const active = option.value === locale;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setLocale(option.value)}
+                      className={[
+                        "flex h-12 items-center justify-between rounded-full px-4 text-sm font-semibold transition active:scale-[.98]",
+                        active ? "bg-black/[0.82] text-white" : "bg-black/[0.06] text-black/[0.58]"
+                      ].join(" ")}
+                    >
+                      <span>{option.label}</span>
+                      {active ? <Check className="h-4 w-4" /> : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
             {day.hotel ? (
               <article className="border-b border-black/[0.10] pb-5">
                 <p className="text-xs text-black/[0.36]">{t("timeFlow.futurePlanned")}</p>
@@ -573,7 +610,7 @@ function MomentScreen({
 
 export default function JourneyFlowPage() {
   const { journey, trip, loading, captureMoment } = useJourney();
-  const { t, locale } = useI18n();
+  const { t, locale, setLocale } = useI18n();
   const capturePhotoInputRef = React.useRef<HTMLInputElement>(null);
   const touchStartRef = React.useRef<{ x: number; y: number } | null>(null);
   const [capturing, setCapturing] = React.useState(false);
@@ -679,7 +716,6 @@ export default function JourneyFlowPage() {
   const activeMoment = moments[visibleActiveIndex];
   const activeTripDay = activeMoment?.tripDay ?? currentTripDay;
   const activePhase = timePhase(activeTripDay.date, currentIso);
-  const activeSavedCount = memoryNotes(activeTripDay).length + (activeTripDay.photos?.length ?? 0);
 
   return (
     <main
@@ -720,12 +756,12 @@ export default function JourneyFlowPage() {
         ))}
         </div>
       </div>
-      <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+1rem)] z-40 flex items-center justify-between gap-3 px-5">
+      <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+1rem)] z-40 flex items-center justify-center gap-3 px-5">
         {activePhase === "future" ? (
           <button
             type="button"
             onClick={() => setSavedDayId(activeTripDay.id)}
-            className="inline-flex min-h-14 flex-1 items-center justify-center gap-2 rounded-full bg-white/[0.92] px-5 text-base font-semibold text-[#151711] shadow-[0_18px_52px_rgba(0,0,0,.28)] backdrop-blur-xl transition active:scale-[.98]"
+            className="inline-flex min-h-14 w-full max-w-[22rem] items-center justify-center gap-2 rounded-full bg-white/[0.92] px-5 text-base font-semibold text-[#151711] shadow-[0_18px_52px_rgba(0,0,0,.28)] backdrop-blur-xl transition active:scale-[.98]"
           >
             <span>{t("timeFlow.openFuture")}</span>
           </button>
@@ -734,23 +770,12 @@ export default function JourneyFlowPage() {
             type="button"
             aria-label={t("timeFlow.captureAria")}
             onClick={() => openCapture(activeTripDay.id)}
-            className="inline-flex min-h-14 flex-1 items-center justify-center gap-2 rounded-full bg-white/[0.92] px-5 text-base font-semibold text-[#151711] shadow-[0_18px_52px_rgba(0,0,0,.28)] backdrop-blur-xl transition active:scale-[.98]"
+            className="inline-flex min-h-14 w-full max-w-[22rem] items-center justify-center gap-2 rounded-full bg-white/[0.92] px-5 text-base font-semibold text-[#151711] shadow-[0_18px_52px_rgba(0,0,0,.28)] backdrop-blur-xl transition active:scale-[.98]"
           >
             <Plus className="h-5 w-5" />
             <span>{t("timeFlow.capture")}</span>
           </button>
         )}
-        <button
-          type="button"
-          onClick={() => setSavedDayId(activeTripDay.id)}
-          className="inline-flex min-h-14 items-center justify-center rounded-full bg-black/[0.38] px-5 text-sm font-semibold text-white shadow-[0_16px_46px_rgba(0,0,0,.22)] ring-1 ring-white/[0.14] backdrop-blur-xl transition active:scale-[.98]"
-        >
-          {activePhase === "future"
-            ? t("timeFlow.futureBadge")
-            : activeSavedCount
-              ? t("timeFlow.savedWithCount", { count: activeSavedCount })
-              : t("timeFlow.savedMoments")}
-        </button>
       </div>
       <MomentCaptureSheet
         open={Boolean(captureDayId)}
@@ -763,7 +788,15 @@ export default function JourneyFlowPage() {
         onClose={closeCapture}
         t={t}
       />
-      <SavedMomentSheet open={Boolean(savedDayId)} day={savedTarget} phase={savedTargetPhase} locale={locale} onClose={() => setSavedDayId(null)} t={t} />
+      <SavedMomentSheet
+        open={Boolean(savedDayId)}
+        day={savedTarget}
+        phase={savedTargetPhase}
+        locale={locale}
+        setLocale={setLocale}
+        onClose={() => setSavedDayId(null)}
+        t={t}
+      />
     </main>
   );
 }
