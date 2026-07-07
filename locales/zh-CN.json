@@ -107,6 +107,10 @@
     "openJourney": "打开旅途",
     "inspiration": "灵感模式",
     "inspirationCopy": "当未来还空着，JourneyOS 可以安静地给你一点方向。",
+    "mapPast": "过去",
+    "mapNow": "此刻",
+    "mapMe": "我",
+    "mapFuture": "未来",
     "somewhere": "某个地方"
   },
   "moment": {

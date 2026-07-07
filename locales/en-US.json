@@ -107,6 +107,10 @@
     "openJourney": "Open journey",
     "inspiration": "Inspiration mode",
     "inspirationCopy": "When the future is still empty, JourneyOS can quietly offer a direction.",
+    "mapPast": "Past",
+    "mapNow": "Now",
+    "mapMe": "Me",
+    "mapFuture": "Future",
     "somewhere": "Somewhere"
   },
   "moment": {

@@ -16,18 +16,50 @@ const fallbackMemoryImage =
 const fallbackJourneyImage =
   "https://images.unsplash.com/photo-1470770903676-69b98201ea1c?auto=format&fit=crop&w=1400&q=80";
 
-function TimeAxis({ active }: { active: "memory" | "now" | "journey" }) {
-  const { t } = useI18n();
-  const points = ["memory", "now", "journey"] as const;
+function TimeScale({ dates, currentDate, tone = "light" }: { dates: string[]; currentDate: string; tone?: "dark" | "light" }) {
+  const currentIndex = Math.max(0, dates.findIndex((date) => date === currentDate));
+  const start = Math.max(0, Math.min(currentIndex - 2, Math.max(0, dates.length - 5)));
+  const visibleDates = dates.slice(start, start + 5);
+  const isLight = tone === "light";
 
   return (
-    <div className="pointer-events-none absolute left-5 right-5 top-6 z-20 flex items-center gap-3 text-[10px] uppercase tracking-[0.18em] text-white/46">
-      {points.map((point, index) => (
-        <React.Fragment key={point}>
-          {index > 0 ? <span className="h-px flex-1 bg-white/22" /> : null}
-          <span className={point === active ? "text-white/86" : "text-white/42"}>{t(`timeSpace.axis.${point}`)}</span>
-        </React.Fragment>
-      ))}
+    <div className="pointer-events-none absolute left-6 right-6 top-[calc(env(safe-area-inset-top)+1.25rem)] z-20">
+      <div className="flex items-center justify-between">
+        {visibleDates.map((date) => {
+          const active = date === currentDate;
+          return (
+            <span
+              key={date}
+              className={`text-[10px] tracking-[0.12em] ${
+                active ? (isLight ? "text-white/86" : "text-black/72") : isLight ? "text-white/38" : "text-black/32"
+              }`}
+            >
+              {date.slice(5).replace("-", "/")}
+            </span>
+          );
+        })}
+      </div>
+      <div className={`relative mt-3 h-4 border-t ${isLight ? "border-white/24" : "border-black/12"}`}>
+        <div className="absolute inset-x-0 top-[-5px] flex items-center justify-between">
+          {visibleDates.map((date) => {
+            const active = date === currentDate;
+            return (
+              <span
+                key={date}
+                className={`rounded-full ${
+                  active
+                    ? isLight
+                      ? "h-2.5 w-2.5 bg-white"
+                      : "h-2.5 w-2.5 bg-black/72"
+                    : isLight
+                      ? "h-1.5 w-1.5 bg-white/32"
+                      : "h-1.5 w-1.5 bg-black/22"
+                }`}
+              />
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
@@ -50,6 +82,37 @@ function SpaceAxis({ place, tone = "dark" }: { place: string; tone?: "dark" | "l
   );
 }
 
+function JourneyMap({ place }: { place: string }) {
+  const { t } = useI18n();
+
+  return (
+    <div className="pointer-events-none mt-5 overflow-hidden rounded-[22px] bg-white/[0.075] px-4 py-4 backdrop-blur-xl">
+      <div className="relative h-[74px]">
+        <svg className="absolute inset-x-0 top-3 h-12 w-full" viewBox="0 0 320 48" fill="none" aria-hidden="true">
+          <path
+            d="M10 31 C58 6 88 41 126 24 C162 8 183 8 216 25 C251 43 279 35 310 13"
+            stroke="rgba(255,255,255,.38)"
+            strokeWidth="1.5"
+            strokeDasharray="3 7"
+            strokeLinecap="round"
+          />
+          <circle cx="10" cy="31" r="3.5" fill="rgba(255,255,255,.42)" />
+          <circle cx="160" cy="15" r="5.5" fill="rgba(255,255,255,.88)" />
+          <circle cx="310" cy="13" r="3.5" fill="rgba(255,255,255,.42)" />
+        </svg>
+        <div className="absolute inset-x-0 top-0 flex items-start justify-between text-[10px] tracking-[0.16em] text-white/42">
+          <span>{t("timeSpace.mapPast")}</span>
+          <span className="text-white/82">{t("timeSpace.mapMe")}</span>
+          <span>{t("timeSpace.mapFuture")}</span>
+        </div>
+        <div className="absolute inset-x-0 bottom-0 text-center">
+          <p className="truncate text-xs text-white/64">{place}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function todayIso() {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -59,9 +122,31 @@ function todayIso() {
   }).format(new Date());
 }
 
+function isEnglishSampleLine(value?: string) {
+  if (!value) return false;
+  const ascii = value.replace(/[^\x00-\x7F]/g, "");
+  return ascii.length / value.length > 0.85 && value.length > 24;
+}
+
+function localWeatherLabel(description: string | undefined, highC: number | undefined, locale: string, fallback: string) {
+  if (!description) return fallback;
+  if (locale !== "zh-CN") {
+    return `${description}${highC ? ` · ${highC}°C` : ""}`;
+  }
+  const descriptionMap = [
+    { key: "Desert heat", value: "沙漠热浪" },
+    { key: "Dry sun", value: "干燥晴朗" },
+    { key: "Humid heat", value: "湿热" },
+    { key: "Mountain night", value: "山间凉意" },
+    { key: "Coastal", value: "海岸天气" }
+  ];
+  const matched = descriptionMap.find((item) => description.includes(item.key));
+  return `${matched?.value ?? "天气在路上"}${highC ? ` · ${highC}°C` : ""}`;
+}
+
 export default function TodayPage() {
   const { journey, trip, loading, captureMoment } = useJourney();
-  const { t, formatDate } = useI18n();
+  const { t, formatDate, locale } = useI18n();
   const sliderRef = React.useRef<HTMLDivElement>(null);
   const captureInputRef = React.useRef<HTMLInputElement>(null);
   const [capturing, setCapturing] = React.useState(false);
@@ -85,17 +170,12 @@ export default function TodayPage() {
   const todayMemory = primaryMemory(currentJourneyDay);
   const todayPhotos = currentDay.photos ?? [];
   const heroImage = todayPhotos[0]?.localUrl ?? fallbackHeroImage;
-  const memoryLine = todayMemory?.content || t("today.prototypeLine");
+  const journeyDates = trip.days.map((day) => day.date);
+  const rawMemoryLine = todayMemory?.content?.trim();
+  const memoryLine = locale === "zh-CN" && isEnglishSampleLine(rawMemoryLine) ? t("today.prototypeLine") : rawMemoryLine || t("today.prototypeLine");
   const todayEvent = firstTimedEvent(currentJourneyDay);
-  const weatherLine = currentDay.weather?.description
-    ? `${currentDay.weather.description}${currentDay.weather.highC ? ` · ${currentDay.weather.highC}°C` : ""}`
-    : t("timeSpace.nowWeather");
-  const momentDimensions = [
-    { label: t("moment.time"), value: formatDate(currentDay.date) },
-    { label: t("moment.place"), value: currentDay.city },
-    { label: t("moment.memory"), value: todayMemory ? t("moment.saved") : t("moment.waiting") },
-    { label: t("moment.emotion"), value: t("moment.emotionHint") }
-  ];
+  const placeLine = currentDay.city;
+  const weatherLine = localWeatherLabel(currentDay.weather?.description, currentDay.weather?.highC, locale, t("timeSpace.nowWeather"));
 
   const memoryItems = journey.days
     .flatMap((day) => {
@@ -129,22 +209,13 @@ export default function TodayPage() {
   return (
     <div
       ref={sliderRef}
-      className="no-scrollbar flex h-[100svh] snap-x snap-mandatory overflow-x-auto overflow-y-hidden bg-[#f7f4ed] text-ink"
+      className="no-scrollbar flex h-[100dvh] min-h-[100svh] snap-x snap-mandatory overflow-x-auto overflow-y-hidden bg-[#f7f4ed] text-ink"
       aria-label={t("timeSpace.aria")}
     >
-      <section className="relative h-[100svh] w-screen shrink-0 snap-center overflow-y-auto bg-[#f6f1e9] px-5 py-7">
-        <div className="absolute left-5 right-5 top-6 z-10 flex items-center gap-3 text-[10px] uppercase tracking-[0.18em] text-black/34">
-          <span className="text-black/62">{t("timeSpace.axis.memory")}</span>
-          <span className="h-px flex-1 bg-black/12" />
-          <span>{t("timeSpace.axis.now")}</span>
-          <span className="h-px flex-1 bg-black/12" />
-          <span>{t("timeSpace.axis.journey")}</span>
-        </div>
+      <section className="relative h-[100dvh] min-h-[100svh] w-screen shrink-0 snap-center overflow-y-auto bg-[#f6f1e9] px-5 py-7">
+        <TimeScale dates={journeyDates} currentDate={currentDay.date} tone="dark" />
         <div className="mx-auto flex min-h-full max-w-md flex-col">
-          <p className="mt-12 text-sm text-black/46">{t("timeSpace.memorySubtitle")}</p>
-          <h1 className="mt-3 text-5xl font-semibold tracking-0">{t("timeSpace.memory")}</h1>
-
-          <div className="mt-8 grid gap-4 pb-8">
+          <div className="grid gap-4 pb-8 pt-[calc(env(safe-area-inset-top)+5.75rem)]">
             {(memoryItems.length ? memoryItems : [{
               id: "empty-memory",
               day: currentJourneyDay,
@@ -173,23 +244,18 @@ export default function TodayPage() {
         </div>
       </section>
 
-      <section className="relative h-[100svh] w-screen shrink-0 snap-center overflow-hidden bg-ink text-paper">
-        <TimeAxis active="now" />
+      <section className="relative h-[100dvh] min-h-[100svh] w-screen shrink-0 snap-center overflow-y-auto bg-ink text-paper">
+        <TimeScale dates={journeyDates} currentDate={currentDay.date} />
         <img src={heroImage} alt={todayPhotos[0]?.caption ?? t("today.heroAlt")} className="absolute inset-0 h-full w-full object-cover opacity-82" />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(15,18,15,.18),rgba(15,18,15,.2)_32%,rgba(15,18,15,.86))]" />
-        <div className="relative z-10 flex h-full flex-col justify-between px-5 py-7">
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(15,18,15,.2),rgba(15,18,15,.36)_36%,rgba(15,18,15,.88))]" />
+        <div className="relative z-10 flex min-h-full flex-col justify-end px-5 pb-[calc(env(safe-area-inset-bottom)+6.5rem)] pt-[calc(env(safe-area-inset-top)+5.5rem)] sm:pb-8">
           <div>
-            <p className="mt-12 text-sm text-white/62">{t("timeSpace.nowSubtitle")}</p>
-            <h1 className="mt-3 text-5xl font-semibold tracking-0">{t("timeSpace.now")}</h1>
-          </div>
-
-          <div className="pb-4">
-            <div className="mb-10">
-              <h2 className="max-w-[20rem] text-4xl font-semibold leading-tight tracking-0">{memoryLine}</h2>
-              <div className="mt-5 grid gap-2 text-sm text-white/72">
+            <div>
+              <h2 className="max-w-[21rem] text-3xl font-semibold leading-tight tracking-0 sm:text-4xl">{memoryLine}</h2>
+              <div className="mt-5 grid gap-2 text-sm text-white/76">
                 <span className="inline-flex items-center gap-2">
                   <MapPin className="h-4 w-4" />
-                  {currentDay.routeLabel ?? currentDay.city}
+                  {placeLine}
                 </span>
                 <span className="inline-flex items-center gap-2">
                   <CloudSun className="h-4 w-4" />
@@ -210,11 +276,11 @@ export default function TodayPage() {
               type="button"
               onClick={() => captureInputRef.current?.click()}
               disabled={capturing}
-              className="flex min-h-24 w-full items-center justify-between rounded-[24px] bg-white/88 p-5 text-ink shadow-story backdrop-blur-xl"
+              className="mt-7 flex min-h-20 w-full items-center justify-between rounded-[24px] bg-[#f7f0e6] p-5 text-[#171512] shadow-story"
             >
               <div>
-                <p className="text-sm text-black/48">{t("timeSpace.nowQuestion")}</p>
-                <p className="mt-2 text-left text-2xl font-semibold tracking-0">
+                <p className="text-sm text-black/52">{t("timeSpace.nowQuestion")}</p>
+                <p className="mt-1 text-left text-xl font-semibold tracking-0">
                   {capturing ? t("timeSpace.savingMoment") : t("timeSpace.captureMoment")}
                 </p>
               </div>
@@ -223,37 +289,27 @@ export default function TodayPage() {
               </span>
             </button>
 
-            <div className="mt-5 grid grid-cols-2 gap-2">
-              {momentDimensions.map((dimension) => (
-                <div key={dimension.label} className="rounded-[18px] bg-white/10 px-4 py-3 backdrop-blur-xl">
-                  <p className="text-[10px] uppercase tracking-[0.16em] text-white/38">{dimension.label}</p>
-                  <p className="mt-1 truncate text-sm text-white/72">{dimension.value}</p>
-                </div>
-              ))}
-            </div>
+            <JourneyMap place={currentDay.routeLabel ?? currentDay.city} />
 
-            <div className="mt-7">
+            <div className="mt-5 hidden sm:block">
               <p className="text-sm font-semibold text-white/82">{t("timeSpace.todayMemory", { count: currentJourneyDay.memories.length })}</p>
               <p className="mt-2 text-sm text-white/58">
                 {todayEvent ? `${todayEvent.time ?? ""} ${todayEvent.title}` : t("timeSpace.nowHint")}
               </p>
             </div>
-            <div className="mt-6">
+            <div className="mt-6 hidden sm:block">
               <SpaceAxis place={currentDay.routeLabel ?? currentDay.city} tone="light" />
             </div>
           </div>
         </div>
       </section>
 
-      <section className="relative h-[100svh] w-screen shrink-0 snap-center overflow-hidden bg-[#edf2f0] text-paper">
-        <TimeAxis active="journey" />
+      <section className="relative h-[100dvh] min-h-[100svh] w-screen shrink-0 snap-center overflow-hidden bg-[#edf2f0] text-paper">
+        <TimeScale dates={journeyDates} currentDate={currentDay.date} />
         <img src={fallbackJourneyImage} alt={t("timeSpace.journeyAlt")} className="absolute inset-0 h-full w-full object-cover opacity-78" />
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(26,49,61,.36),rgba(13,21,24,.88))]" />
         <div className="relative z-10 flex h-full flex-col px-5 py-7">
-          <p className="mt-12 text-sm text-white/62">{t("timeSpace.journeySubtitle")}</p>
-          <h1 className="mt-3 text-5xl font-semibold tracking-0">{t("timeSpace.journey")}</h1>
-
-          <div className="relative mt-10 flex-1 overflow-y-auto pb-20 pl-7">
+          <div className="relative mt-[calc(env(safe-area-inset-top)+5.75rem)] flex-1 overflow-y-auto pb-20 pl-7">
             <div className="absolute bottom-0 left-[9px] top-2 border-l border-white/28" />
             <div className="grid gap-6">
               {futureDays.map((day) => {
