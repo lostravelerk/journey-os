@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Settings } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 
@@ -25,11 +25,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         aria-label={t("nav.settings")}
         title={t("nav.settings")}
         className={cn(
-          "fixed right-4 top-4 z-40 grid h-9 w-9 place-items-center rounded-full text-white/26 transition hover:bg-white/12 hover:text-white/62 sm:right-5 sm:top-5",
-          pathname === "/settings" && "bg-black/6 text-black/56 dark:bg-white/10 dark:text-white/68"
+          "fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] left-4 z-40 grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-black/8 text-white/28 shadow-soft backdrop-blur-xl transition hover:bg-black/14 hover:text-white/58 sm:left-5",
+          pathname !== "/" && "border-black/8 bg-white/58 text-black/30 hover:bg-white/78 hover:text-black/54 dark:border-white/10 dark:bg-white/8 dark:text-white/34 dark:hover:bg-white/12 dark:hover:text-white/62",
+          pathname === "/settings" && "bg-black/10 text-black/58 dark:bg-white/10 dark:text-white/68"
         )}
       >
-        <Settings className="h-4 w-4" />
+        <MoreHorizontal className="h-5 w-5" />
       </Link>
     </div>
   );
