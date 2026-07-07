@@ -78,6 +78,15 @@ function db() {
   return database;
 }
 
+function withStorageTimeout<T>(operation: Promise<T>, fallback: T, timeoutMs = 1200): Promise<T> {
+  return Promise.race([
+    operation,
+    new Promise<T>((resolve) => {
+      window.setTimeout(() => resolve(fallback), timeoutMs);
+    })
+  ]);
+}
+
 function readFallbackTrip(): Trip | undefined {
   if (typeof window === "undefined") return undefined;
   const raw = window.localStorage.getItem(fallbackTripKey);
@@ -272,14 +281,14 @@ export async function getOrCreateTrip() {
   const activeTripId = readActiveTripId();
   try {
     if (store && activeTripId) {
-      const active = await store.trips.get(activeTripId);
+      const active = await withStorageTimeout(store.trips.get(activeTripId), undefined);
       if (active) {
         const normalized = applyConstitutionDefaults(active);
         writeFallbackTrip(normalized);
         return normalized;
       }
     }
-    const existing = store ? await store.trips.orderBy("updatedAt").last() : undefined;
+    const existing = store ? await withStorageTimeout(store.trips.orderBy("updatedAt").last(), undefined) : undefined;
     if (existing) {
       const normalized = applyConstitutionDefaults(existing);
       if (JSON.stringify(normalized) !== JSON.stringify(existing)) {
@@ -310,7 +319,7 @@ export async function getOrCreateTrip() {
 export async function getTrip(id: string) {
   const store = db();
   try {
-    const trip = store ? await store.trips.get(id) : undefined;
+    const trip = store ? await withStorageTimeout(store.trips.get(id), undefined) : undefined;
     if (trip) return applyConstitutionDefaults(trip);
   } catch {
     // fall through to fallback
@@ -323,7 +332,7 @@ export async function getTrip(id: string) {
 export async function getTrips() {
   const store = db();
   try {
-    const trips = store ? await store.trips.orderBy("updatedAt").reverse().toArray() : [];
+    const trips = store ? await withStorageTimeout(store.trips.orderBy("updatedAt").reverse().toArray(), []) : [];
     if (trips.length) return trips.map(applyConstitutionDefaults);
   } catch {
     // fall through to fallback
@@ -352,7 +361,7 @@ export async function saveTrip(trip: Trip) {
   };
   writeFallbackTrip(next);
   try {
-    await persistEntityTables(next);
+    await withStorageTimeout(persistEntityTables(next), undefined);
   } catch {
     // localStorage fallback already persisted.
   }

@@ -154,11 +154,10 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
 
       await updateDay(dayId, (day) => {
         const notes = day.notes ?? [];
-        const hasMemory = notes.some((note) => note.content.trim());
 
         return {
           ...day,
-          notes: hasMemory ? notes : [...notes, memory],
+          notes: [...notes, memory],
           photos: [...(day.photos ?? []), ...photos]
         };
       });
