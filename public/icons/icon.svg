@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="JourneyOS">
+  <rect width="512" height="512" rx="96" fill="#171916"/>
+  <path d="M132 152h88v138c0 56-32 84-82 84-18 0-34-4-48-12l18-54c9 5 17 8 27 8 19 0 31-12 31-36V152z" fill="#f6f7f3"/>
+  <path d="M276 148c66 0 112 48 112 114s-46 114-112 114-112-48-112-114 46-114 112-114zm0 62c-29 0-48 22-48 52s19 52 48 52 48-22 48-52-19-52-48-52z" fill="#f6f7f3" opacity=".92"/>
+  <path d="M110 414h292" stroke="#9b7446" stroke-width="18" stroke-linecap="round"/>
+</svg>

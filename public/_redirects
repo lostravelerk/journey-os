@@ -1,0 +1,3 @@
+/day/:id /day?day=:id 302
+/share/:id /story?story=:id 302
+/* /index.html 200
