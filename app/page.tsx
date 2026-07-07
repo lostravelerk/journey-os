@@ -653,6 +653,16 @@ export default function JourneyFlowPage() {
     setActiveIndex(currentIndex);
   }, [currentIndex]);
 
+  React.useEffect(() => {
+    const returnToToday = () => {
+      setActiveIndex(currentIndex);
+      setSavedDayId(null);
+      setCaptureDayId(null);
+    };
+    window.addEventListener("pageshow", returnToToday);
+    return () => window.removeEventListener("pageshow", returnToToday);
+  }, [currentIndex]);
+
   if (loading || !journey || !trip || !currentTripDay || !currentJourneyDay || !moments.length) {
     return (
       <div className="min-h-[100dvh] bg-[#0f110d] p-4">

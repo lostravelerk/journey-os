@@ -1,12 +1,12 @@
 import type {
-  AiRequest,
-  AiResponse,
   FutureInspirationInput,
+  IntelligenceRequest,
+  IntelligenceResponse,
   JourneyImportInput,
   MemoryLineInput,
   MomentReflectionInput,
   StoryDraftInput
-} from "@/lib/ai/types";
+} from "@/lib/intelligence/types";
 
 function compact(value: string, fallback: string) {
   const text = value.trim();
@@ -14,7 +14,7 @@ function compact(value: string, fallback: string) {
   return text.length > 48 ? `${text.slice(0, 46)}...` : text;
 }
 
-export function mockAiResponse(request: AiRequest): AiResponse {
+export function mockIntelligenceResponse(request: IntelligenceRequest): IntelligenceResponse {
   switch (request.type) {
     case "memory_line":
       return {
@@ -63,9 +63,9 @@ export function mockAiResponse(request: AiRequest): AiResponse {
   }
 }
 
-export async function requestJourneyAi(request: AiRequest): Promise<AiResponse> {
+export async function requestJourneyIntelligence(request: IntelligenceRequest): Promise<IntelligenceResponse> {
   try {
-    const response = await fetch("/api/ai", {
+    const response = await fetch("/api/intelligence", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -74,31 +74,31 @@ export async function requestJourneyAi(request: AiRequest): Promise<AiResponse> 
     });
 
     if (!response.ok) {
-      throw new Error("JourneyOS AI is unavailable");
+      throw new Error("JourneyOS intelligence is unavailable");
     }
 
-    return (await response.json()) as AiResponse;
+    return (await response.json()) as IntelligenceResponse;
   } catch {
-    return mockAiResponse(request);
+    return mockIntelligenceResponse(request);
   }
 }
 
 export async function generateMemoryLine(input: MemoryLineInput) {
-  return (await requestJourneyAi({ type: "memory_line", input })).result;
+  return (await requestJourneyIntelligence({ type: "memory_line", input })).result;
 }
 
 export async function generateMomentReflection(input: MomentReflectionInput) {
-  return (await requestJourneyAi({ type: "moment_reflection", input })).result;
+  return (await requestJourneyIntelligence({ type: "moment_reflection", input })).result;
 }
 
 export async function generateFutureInspiration(input: FutureInspirationInput) {
-  return (await requestJourneyAi({ type: "future_inspiration", input })).result;
+  return (await requestJourneyIntelligence({ type: "future_inspiration", input })).result;
 }
 
 export async function parseJourneyImport(input: JourneyImportInput) {
-  return (await requestJourneyAi({ type: "journey_import", input })).result;
+  return (await requestJourneyIntelligence({ type: "journey_import", input })).result;
 }
 
 export async function generateStoryDraft(input: StoryDraftInput) {
-  return (await requestJourneyAi({ type: "story_draft", input })).result;
+  return (await requestJourneyIntelligence({ type: "story_draft", input })).result;
 }

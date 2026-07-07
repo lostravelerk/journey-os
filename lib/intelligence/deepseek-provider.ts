@@ -1,4 +1,4 @@
-import type { AiRequest, AiResponse } from "./types";
+import type { IntelligenceRequest, IntelligenceResponse } from "./types";
 
 const DEEPSEEK_CHAT_COMPLETIONS_URL = "https://api.deepseek.com/chat/completions";
 const DEEPSEEK_MODEL = "deepseek-chat";
@@ -33,7 +33,7 @@ function clip(value: string, maxLength = 6000) {
   return value.trim().slice(0, maxLength);
 }
 
-function buildTaskPrompt(request: AiRequest) {
+function buildTaskPrompt(request: IntelligenceRequest) {
   switch (request.type) {
     case "memory_line":
       return [
@@ -84,7 +84,7 @@ function buildTaskPrompt(request: AiRequest) {
   }
 }
 
-function buildMessages(request: AiRequest): DeepSeekMessage[] {
+function buildMessages(request: IntelligenceRequest): DeepSeekMessage[] {
   return [
     { role: "system", content: systemPrompt },
     { role: "user", content: buildTaskPrompt(request) }
@@ -92,10 +92,10 @@ function buildMessages(request: AiRequest): DeepSeekMessage[] {
 }
 
 export async function runDeepSeekAi(
-  request: AiRequest,
+  request: IntelligenceRequest,
   apiKey: string | undefined,
   fetchImpl: DeepSeekFetch = fetch
-): Promise<AiResponse> {
+): Promise<IntelligenceResponse> {
   if (!apiKey) {
     throw new Error("Missing DeepSeek API key");
   }

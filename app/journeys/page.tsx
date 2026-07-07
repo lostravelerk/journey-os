@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, Section } from "@/components/ui/card";
 import { Input, Label, Textarea } from "@/components/ui/field";
 import { useJourney } from "@/components/journey-provider";
-import { getCurrentJourneyDay, getJourneyReferenceLabel } from "@/lib/engines/journey-engine";
+import { getJourneyReferenceLabel } from "@/lib/engines/journey-engine";
 import { analyzeFutureJourneyInput, FutureJourneyAnalysis } from "@/lib/future-journey-import";
 import { createBlankJourneyTrip } from "@/lib/journey-factory";
 import { useI18n } from "@/lib/i18n";
@@ -50,7 +50,7 @@ export default function JourneysPage() {
     const nextTrip = createBlankJourneyTrip({ title, startDate, endDate });
     await commitTrip(nextTrip);
     setBusy(false);
-    router.push(`/day?day=${encodeURIComponent(nextTrip.days[0].id)}`);
+    router.push("/");
   }
 
   async function analyzeJourney(file?: File) {
@@ -87,9 +87,7 @@ export default function JourneysPage() {
       router.push("/calendar");
       return;
     }
-    const selectedJourney = journeys.find((item) => item.id === journeyId);
-    const today = selectedJourney ? getCurrentJourneyDay(selectedJourney, todayIso()) : selected.days[0];
-    router.push(`/day?day=${encodeURIComponent(today.id)}`);
+    router.push("/");
   }
 
   const visibleJourneys = journeys.length ? journeys : [journey];

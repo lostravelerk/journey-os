@@ -1,5 +1,5 @@
-import { runDeepSeekAi } from "../../lib/ai/deepseek-provider";
-import { isAiRequest } from "../../lib/ai/types";
+import { runDeepSeekAi } from "../../lib/intelligence/deepseek-provider";
+import { isIntelligenceRequest } from "../../lib/intelligence/types";
 
 type Env = {
   DEEPSEEK_API_KEY?: string;
@@ -44,8 +44,8 @@ export async function onRequest(context: PagesContext) {
     return jsonResponse({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  if (!isAiRequest(payload)) {
-    return jsonResponse({ error: "Invalid AI request" }, { status: 400 });
+  if (!isIntelligenceRequest(payload)) {
+    return jsonResponse({ error: "Invalid intelligence request" }, { status: 400 });
   }
 
   try {
@@ -53,7 +53,7 @@ export async function onRequest(context: PagesContext) {
   } catch {
     return jsonResponse(
       {
-        error: "AI temporarily unavailable",
+        error: "Intelligence temporarily unavailable",
         fallback: "稍后再整理也可以。"
       },
       { status: 503 }

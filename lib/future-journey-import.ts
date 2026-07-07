@@ -1,4 +1,4 @@
-import { requestJourneyAi } from "@/lib/ai/ai-service";
+import { requestJourneyIntelligence } from "@/lib/intelligence/intelligence-service";
 import { parseJourneyFile, parseJourneyText, structuredJourneyImportExtensions } from "@/lib/journey-importer";
 import { Trip } from "@/lib/schema";
 
@@ -63,7 +63,7 @@ function materialFromTrip(trip: Trip) {
 
 async function draftWithAi(input: { trip: Trip; sourceName: string; text?: string }) {
   const material = input.text?.trim() || materialFromTrip(input.trip) || input.sourceName;
-  return requestJourneyAi({
+  return requestJourneyIntelligence({
     type: "journey_import",
     input: {
       text: material,

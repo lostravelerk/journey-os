@@ -1,4 +1,4 @@
-export const aiRequestTypes = [
+export const intelligenceRequestTypes = [
   "memory_line",
   "moment_reflection",
   "future_inspiration",
@@ -6,7 +6,7 @@ export const aiRequestTypes = [
   "story_draft"
 ] as const;
 
-export type AiRequestType = (typeof aiRequestTypes)[number];
+export type IntelligenceRequestType = (typeof intelligenceRequestTypes)[number];
 
 export type MemoryLineInput = {
   text: string;
@@ -37,26 +37,29 @@ export type StoryDraftInput = {
   route?: string;
 };
 
-export type AiRequest =
+export type IntelligenceRequest =
   | { type: "memory_line"; input: MemoryLineInput }
   | { type: "moment_reflection"; input: MomentReflectionInput }
   | { type: "future_inspiration"; input: FutureInspirationInput }
   | { type: "journey_import"; input: JourneyImportInput }
   | { type: "story_draft"; input: StoryDraftInput };
 
-export type AiProvider = "deepseek" | "mock";
+export type IntelligenceProvider = "deepseek" | "mock";
 
-export type AiResponse = {
+export type IntelligenceResponse = {
   result: string;
   draft: true;
   generated: true;
-  provider: AiProvider;
+  provider: IntelligenceProvider;
 };
 
-export function isAiRequest(value: unknown): value is AiRequest {
+export function isIntelligenceRequest(value: unknown): value is IntelligenceRequest {
   if (!value || typeof value !== "object") return false;
   const candidate = value as { type?: unknown; input?: unknown };
-  if (typeof candidate.type !== "string" || !aiRequestTypes.includes(candidate.type as AiRequestType)) {
+  if (
+    typeof candidate.type !== "string" ||
+    !intelligenceRequestTypes.includes(candidate.type as IntelligenceRequestType)
+  ) {
     return false;
   }
   if (!candidate.input || typeof candidate.input !== "object") return false;
