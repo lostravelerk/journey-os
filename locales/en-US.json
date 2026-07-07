@@ -215,7 +215,7 @@
     "pastePlaceholder": "Example: 7/8 Flagstaff Hotel, 7/9 Grand Canyon sunset, 7/10 Walnut Canyon...",
     "understandJourney": "Understand journey",
     "chooseFile": "Choose file",
-    "mockAiNotice": "Currently uses local mock AI understanding: no cloud upload and no real AI call. Images and PDFs become confirmation drafts first.",
+    "aiLayerNotice": "AI only organizes temporarily. Results become drafts first and join JourneyOS only after confirmation.",
     "draftBadge": "Needs confirmation",
     "draftSummary": "{days} days · {nodes} planned nodes · {places} places",
     "sourceName": "Source: {name}",

@@ -215,7 +215,7 @@
     "pastePlaceholder": "例如：7/8 Flagstaff Hotel，7/9 Grand Canyon 日落，7/10 Walnut Canyon...",
     "understandJourney": "理解这段旅程",
     "chooseFile": "选择文件",
-    "mockAiNotice": "当前为本地 Mock AI 理解：不上传云端，不调用真实 AI。图片和 PDF 会先生成待确认草稿。",
+    "aiLayerNotice": "AI 只做临时整理。结果先成为草稿，确认后才加入 JourneyOS。",
     "draftBadge": "待确认",
     "draftSummary": "{days} 天 · {nodes} 个计划节点 · {places} 个地点",
     "sourceName": "来源：{name}",

@@ -190,7 +190,7 @@ export default function JourneysPage() {
                 {t("journeys.chooseFile")}
               </Button>
             </div>
-            <p className="mt-3 text-xs leading-5 text-black/42 dark:text-white/42">{t("journeys.mockAiNotice")}</p>
+            <p className="mt-3 text-xs leading-5 text-black/42 dark:text-white/42">{t("journeys.aiLayerNotice")}</p>
           </div>
         </div>
       </Card>
@@ -212,6 +212,9 @@ export default function JourneysPage() {
                 <p className="flex gap-2">
                   <FileText className="mt-1 h-4 w-4 shrink-0" />
                   <span>{t("journeys.sourceName", { name: draftAnalysis.sourceName })}</span>
+                </p>
+                <p className="rounded-lg border border-black/10 bg-white/45 p-3 text-black/60 dark:border-white/10 dark:bg-white/[0.06] dark:text-white/60">
+                  {draftAnalysis.aiDraft}
                 </p>
                 <p>{t("journeys.confirmRule")}</p>
                 {draftAnalysis.summary.missingStayDays ? (

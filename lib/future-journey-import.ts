@@ -1,3 +1,4 @@
+import { requestJourneyAi } from "@/lib/ai/ai-service";
 import { parseJourneyFile, parseJourneyText, structuredJourneyImportExtensions } from "@/lib/journey-importer";
 import { Trip } from "@/lib/schema";
 
@@ -7,7 +8,8 @@ export type FutureJourneyAnalysis = {
   trip: Trip;
   sourceName: string;
   sourceKind: FutureJourneySourceKind;
-  mockAi: true;
+  aiDraft: string;
+  aiProvider: "deepseek" | "mock";
   summary: {
     days: number;
     plannedNodes: number;
@@ -50,6 +52,26 @@ function summarize(trip: Trip): FutureJourneyAnalysis["summary"] {
   };
 }
 
+function materialFromTrip(trip: Trip) {
+  return trip.days
+    .map((day) => {
+      const schedule = day.schedule.map((item) => `${item.time} ${item.title} ${item.location ?? ""}`.trim()).join("; ");
+      return [day.date, day.routeLabel || day.title, day.city, schedule].filter(Boolean).join(" · ");
+    })
+    .join("\n");
+}
+
+async function draftWithAi(input: { trip: Trip; sourceName: string; text?: string }) {
+  const material = input.text?.trim() || materialFromTrip(input.trip) || input.sourceName;
+  return requestJourneyAi({
+    type: "journey_import",
+    input: {
+      text: material,
+      sourceName: input.sourceName
+    }
+  });
+}
+
 export async function analyzeFutureJourneyInput(input: { file?: File; text?: string }): Promise<FutureJourneyAnalysis> {
   const cleanText = input.text?.trim();
 
@@ -59,22 +81,26 @@ export async function analyzeFutureJourneyInput(input: { file?: File; text?: str
       sourceKind === "structured"
         ? await parseJourneyFile(input.file)
         : parseJourneyText(cleanText || draftTextFromFile(input.file), input.file.name.replace(/\.[^.]+$/, "") || "Future Journey");
+    const aiDraft = await draftWithAi({ trip, sourceName: input.file.name, text: cleanText });
 
     return {
       trip,
       sourceName: input.file.name,
       sourceKind,
-      mockAi: true,
+      aiDraft: aiDraft.result,
+      aiProvider: aiDraft.provider,
       summary: summarize(trip)
     };
   }
 
   const trip = parseJourneyText(cleanText || "Future Journey", "Future Journey");
+  const aiDraft = await draftWithAi({ trip, sourceName: "Text", text: cleanText });
   return {
     trip,
     sourceName: "Text",
     sourceKind: "text",
-    mockAi: true,
+    aiDraft: aiDraft.result,
+    aiProvider: aiDraft.provider,
     summary: summarize(trip)
   };
 }
