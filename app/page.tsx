@@ -2,15 +2,16 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Camera, Check, CloudSun, Image as ImageIcon, MapPin, Plus, Sparkles, X } from "lucide-react";
+import { Camera, Check, CloudSun, Image as ImageIcon, MapPin, Mic, Plus, Sparkles, Square, Trash2, X } from "lucide-react";
 import { useJourney } from "@/components/journey-provider";
 import { getCurrentJourneyDay } from "@/lib/engines/journey-engine";
 import { primaryMemory } from "@/lib/engines/memory-engine";
 import { requestJourneyIntelligence } from "@/lib/intelligence/intelligence-service";
 import type { IntelligenceProvider } from "@/lib/intelligence/types";
 import { JourneyDay as DomainDay } from "@/lib/domain";
-import { JourneyDay as TripDay } from "@/lib/schema";
+import { JourneyDay as TripDay, WeatherSummary } from "@/lib/schema";
 import { Locale, useI18n } from "@/lib/i18n";
+import { canUseRichLocalStorage } from "@/lib/local-store";
 
 const fallbackImages = [
   "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1800&q=80",
@@ -20,6 +21,25 @@ const fallbackImages = [
 ];
 
 type TimePhase = "memory" | "now" | "future";
+type CaptureSystemState = "checking" | "ready" | "blocked";
+
+type CaptureEnvironment = {
+  storageReady: boolean | null;
+  locationState: CaptureSystemState;
+  weatherState: CaptureSystemState;
+  placeLabel?: string;
+  latitude?: number;
+  longitude?: number;
+  accuracyMeters?: number;
+  weather?: WeatherSummary;
+  message?: string;
+};
+
+const emptyCaptureEnvironment: CaptureEnvironment = {
+  storageReady: null,
+  locationState: "checking",
+  weatherState: "checking"
+};
 
 function todayIso() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -74,6 +94,112 @@ function localizedWeather(day: TripDay, locale: Locale, fallback: string) {
   }
 
   return `${fallback}${highC ? ` · ${highC}°C` : ""}`;
+}
+
+function weatherCodeLabel(code: number, locale: Locale) {
+  const zh: Record<number, string> = {
+    0: "晴",
+    1: "少云",
+    2: "多云",
+    3: "阴",
+    45: "雾",
+    48: "雾凇",
+    51: "小毛毛雨",
+    53: "毛毛雨",
+    55: "强毛毛雨",
+    61: "小雨",
+    63: "雨",
+    65: "大雨",
+    71: "小雪",
+    73: "雪",
+    75: "大雪",
+    80: "阵雨",
+    81: "阵雨",
+    82: "强阵雨",
+    95: "雷雨"
+  };
+  const en: Record<number, string> = {
+    0: "Clear",
+    1: "Mostly clear",
+    2: "Cloudy",
+    3: "Overcast",
+    45: "Fog",
+    48: "Rime fog",
+    51: "Light drizzle",
+    53: "Drizzle",
+    55: "Heavy drizzle",
+    61: "Light rain",
+    63: "Rain",
+    65: "Heavy rain",
+    71: "Light snow",
+    73: "Snow",
+    75: "Heavy snow",
+    80: "Showers",
+    81: "Showers",
+    82: "Heavy showers",
+    95: "Thunderstorm"
+  };
+
+  return locale === "zh-CN" ? zh[code] ?? "天气已记录" : en[code] ?? "Weather kept";
+}
+
+function coordinateLabel(latitude: number, longitude: number) {
+  return `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+}
+
+function getBrowserPosition() {
+  return new Promise<GeolocationPosition>((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("Geolocation is not supported."));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: true,
+      maximumAge: 60_000,
+      timeout: 10_000
+    });
+  });
+}
+
+async function getCurrentWeather(latitude: number, longitude: number, locale: Locale): Promise<WeatherSummary> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 8_000);
+  try {
+    const response = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m&temperature_unit=celsius&wind_speed_unit=kmh`,
+      { signal: controller.signal }
+    );
+    if (!response.ok) throw new Error("Weather request failed.");
+    const data = await response.json() as {
+      current?: {
+        temperature_2m?: number;
+        weather_code?: number;
+        relative_humidity_2m?: number;
+        wind_speed_10m?: number;
+      };
+    };
+    const current = data.current ?? {};
+    const weatherCode = typeof current.weather_code === "number" ? current.weather_code : undefined;
+    const temperature = typeof current.temperature_2m === "number" ? Math.round(current.temperature_2m) : undefined;
+    return {
+      highC: temperature,
+      feelsLikeC: temperature,
+      humidity: typeof current.relative_humidity_2m === "number" ? current.relative_humidity_2m : undefined,
+      windKph: typeof current.wind_speed_10m === "number" ? current.wind_speed_10m : undefined,
+      description: weatherCode !== undefined ? weatherCodeLabel(weatherCode, locale) : locale === "zh-CN" ? "天气已记录" : "Weather kept"
+    };
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
 }
 
 function memoryNotes(day: TripDay) {
@@ -277,12 +403,18 @@ function MomentCaptureSheet({
   open,
   draftText,
   selectedCount,
+  audioReady,
+  recording,
+  environment,
+  error,
   saving,
   refining,
   refineDraft,
   onDraftTextChange,
   onTakePhoto,
   onChoosePhotos,
+  onToggleVoice,
+  onRefreshEnvironment,
   onRefine,
   onAcceptRefine,
   onIgnoreRefine,
@@ -293,12 +425,18 @@ function MomentCaptureSheet({
   open: boolean;
   draftText: string;
   selectedCount: number;
+  audioReady: boolean;
+  recording: boolean;
+  environment: CaptureEnvironment;
+  error: string | null;
   saving: boolean;
   refining: boolean;
   refineDraft: { result: string; provider: IntelligenceProvider } | null;
   onDraftTextChange: (value: string) => void;
   onTakePhoto: () => void;
   onChoosePhotos: () => void;
+  onToggleVoice: () => void;
+  onRefreshEnvironment: () => void;
   onRefine: () => Promise<void>;
   onAcceptRefine: () => void;
   onIgnoreRefine: () => void;
@@ -308,7 +446,13 @@ function MomentCaptureSheet({
 }) {
   if (!open) return null;
 
-  const canSave = Boolean(draftText.trim()) || selectedCount > 0;
+  const needsRichStorage = selectedCount > 0 || audioReady;
+  const canSave = (Boolean(draftText.trim()) || selectedCount > 0 || audioReady) && (!needsRichStorage || environment.storageReady !== false);
+  const weatherLabel = environment.weather
+    ? `${environment.weather.description ?? t("timeFlow.weatherKept")}${environment.weather.highC !== undefined ? ` · ${environment.weather.highC}°C` : ""}`
+    : environment.weatherState === "checking"
+      ? t("timeFlow.weatherChecking")
+      : t("timeFlow.weatherUnavailable");
 
   return (
     <div className="fixed inset-0 z-50 bg-black/[0.42] backdrop-blur-md" role="dialog" aria-modal="true" aria-label={t("timeFlow.captureTitle")}>
@@ -386,6 +530,7 @@ function MomentCaptureSheet({
           <button
             type="button"
             onClick={onTakePhoto}
+            disabled={environment.storageReady === false}
             className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-black/[0.07] px-4 text-sm font-semibold text-black/[0.68] transition active:scale-95"
           >
             <Camera className="h-4 w-4" />
@@ -394,6 +539,7 @@ function MomentCaptureSheet({
           <button
             type="button"
             onClick={onChoosePhotos}
+            disabled={environment.storageReady === false}
             className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-black/[0.07] px-4 text-sm font-semibold text-black/[0.68] transition active:scale-95"
           >
             <ImageIcon className="h-4 w-4" />
@@ -401,8 +547,47 @@ function MomentCaptureSheet({
           </button>
         </div>
 
+        <div className="mt-3 grid grid-cols-[1fr_auto] gap-3">
+          <button
+            type="button"
+            onClick={onToggleVoice}
+            disabled={environment.storageReady === false}
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-black/[0.07] px-4 text-sm font-semibold text-black/[0.68] transition active:scale-95 disabled:opacity-40"
+          >
+            {recording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+            <span>{recording ? t("timeFlow.stopVoice") : audioReady ? t("timeFlow.voiceReady") : t("timeFlow.recordVoice")}</span>
+          </button>
+          <button
+            type="button"
+            onClick={onRefreshEnvironment}
+            className="inline-flex min-h-12 items-center justify-center rounded-full bg-black/[0.05] px-4 text-sm font-semibold text-black/[0.50] transition active:scale-95"
+          >
+            {t("timeFlow.refreshMomentInfo")}
+          </button>
+        </div>
+
+        <div className="mt-4 rounded-[1.25rem] bg-black/[0.04] px-4 py-4 text-sm leading-relaxed text-black/[0.54]">
+          <div className="flex items-center justify-between gap-3">
+            <span>{t("timeFlow.storage")}</span>
+            <span>{environment.storageReady === null ? t("timeFlow.storageChecking") : environment.storageReady ? t("timeFlow.storageReady") : t("timeFlow.storageBlocked")}</span>
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <span>{t("timeFlow.location")}</span>
+            <span className="text-right">{environment.placeLabel ?? (environment.locationState === "checking" ? t("timeFlow.locationChecking") : t("timeFlow.locationUnavailable"))}</span>
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <span>{t("timeFlow.weather")}</span>
+            <span className="text-right">{weatherLabel}</span>
+          </div>
+        </div>
+
+        {environment.message ? <p className="mt-3 text-sm leading-relaxed text-black/[0.48]">{environment.message}</p> : null}
+        {error ? <p className="mt-3 rounded-[1rem] bg-red-500/[0.10] px-4 py-3 text-sm leading-relaxed text-red-950/70">{error}</p> : null}
+
         <div className="mt-5 flex items-center justify-between gap-3">
-          <p className="text-sm font-medium text-black/[0.46]">{selectedCount ? t("timeFlow.selectedPhotos", { count: selectedCount }) : t("timeFlow.addPhoto")}</p>
+          <p className="text-sm font-medium text-black/[0.46]">
+            {selectedCount ? t("timeFlow.selectedPhotos", { count: selectedCount }) : audioReady ? t("timeFlow.voiceAttached") : t("timeFlow.addPhoto")}
+          </p>
           <button
             type="submit"
             disabled={!canSave || saving}
@@ -425,6 +610,8 @@ function SavedMomentSheet({
   phase,
   locale,
   setLocale,
+  onDeleteMemory,
+  onDeletePhoto,
   onClose,
   t
 }: {
@@ -433,6 +620,8 @@ function SavedMomentSheet({
   phase: TimePhase;
   locale: Locale;
   setLocale: (locale: Locale) => void;
+  onDeleteMemory: (dayId: string, noteId: string) => void;
+  onDeletePhoto: (dayId: string, photoId: string) => void;
   onClose: () => void;
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
@@ -539,7 +728,17 @@ function SavedMomentSheet({
             {visiblePhotos.length ? (
               <div className="grid grid-cols-3 gap-2">
                 {visiblePhotos.slice(0, 6).map((photo) => (
-                  <img key={photo.id} src={photo.localUrl ?? ""} alt={photo.caption ?? t("timeFlow.imageAlt")} className="aspect-square w-full object-cover" />
+                  <figure key={photo.id} className="relative overflow-hidden rounded-[1rem] bg-black/[0.04]">
+                    <img src={photo.localUrl ?? ""} alt={photo.caption ?? t("timeFlow.imageAlt")} className="aspect-square w-full object-cover" />
+                    <button
+                      type="button"
+                      aria-label={t("timeFlow.deletePhoto")}
+                      onClick={() => onDeletePhoto(day.id, photo.id)}
+                      className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full bg-black/[0.48] text-white shadow-[0_10px_24px_rgba(0,0,0,.22)] backdrop-blur-md transition active:scale-95"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </figure>
                 ))}
               </div>
             ) : null}
@@ -552,8 +751,32 @@ function SavedMomentSheet({
               <div className="space-y-5">
                 {memories.slice().reverse().map((memory) => (
                   <article key={memory.id} className="border-b border-black/[0.10] pb-5 last:border-b-0">
-                    <p className="text-xs text-black/[0.36]">{formatNoteTime(memory.createdAt, locale)}</p>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs text-black/[0.36]">{formatNoteTime(memory.createdAt, locale)}</p>
+                      <button
+                        type="button"
+                        onClick={() => onDeleteMemory(day.id, memory.id)}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-full bg-black/[0.05] px-3 text-xs font-semibold text-black/[0.46] transition active:scale-95"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        <span>{t("timeFlow.deleteMemory")}</span>
+                      </button>
+                    </div>
                     <p className="mt-2 text-xl font-semibold leading-relaxed text-black/[0.82]">{memory.content}</p>
+                    {memory.audioUrl ? (
+                      <audio controls src={memory.audioUrl} className="mt-3 w-full" />
+                    ) : null}
+                    {memory.location?.label || memory.weather ? (
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-black/[0.44]">
+                        {memory.location?.label ? <span>{memory.location.label}</span> : null}
+                        {memory.weather ? (
+                          <span>
+                            {memory.weather.description ?? t("timeFlow.weatherKept")}
+                            {memory.weather.highC !== undefined ? ` · ${memory.weather.highC}°C` : ""}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </article>
                 ))}
               </div>
@@ -686,11 +909,14 @@ function MomentScreen({
 }
 
 export default function JourneyFlowPage() {
-  const { journey, trip, loading, captureMoment } = useJourney();
+  const { journey, trip, loading, captureMoment, updateDay } = useJourney();
   const { t, locale, setLocale } = useI18n();
   const cameraInputRef = React.useRef<HTMLInputElement>(null);
   const albumInputRef = React.useRef<HTMLInputElement>(null);
   const touchStartRef = React.useRef<{ x: number; y: number } | null>(null);
+  const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = React.useRef<MediaStream | null>(null);
+  const audioChunksRef = React.useRef<Blob[]>([]);
   const [capturing, setCapturing] = React.useState(false);
   const [clock, setClock] = React.useState("");
   const [activeIndex, setActiveIndex] = React.useState<number | null>(null);
@@ -698,6 +924,11 @@ export default function JourneyFlowPage() {
   const [savedDayId, setSavedDayId] = React.useState<string | null>(null);
   const [draftText, setDraftText] = React.useState("");
   const [draftFiles, setDraftFiles] = React.useState<File[]>([]);
+  const [audioUrl, setAudioUrl] = React.useState<string | null>(null);
+  const [audioMimeType, setAudioMimeType] = React.useState<string | null>(null);
+  const [recording, setRecording] = React.useState(false);
+  const [captureEnvironment, setCaptureEnvironment] = React.useState<CaptureEnvironment>(emptyCaptureEnvironment);
+  const [captureError, setCaptureError] = React.useState<string | null>(null);
   const [refining, setRefining] = React.useState(false);
   const [refineDraft, setRefineDraft] = React.useState<{ result: string; provider: IntelligenceProvider } | null>(null);
 
@@ -743,6 +974,17 @@ export default function JourneyFlowPage() {
     return () => window.removeEventListener("pageshow", returnToToday);
   }, [currentIndex]);
 
+  React.useEffect(() => () => {
+    const recorder = mediaRecorderRef.current;
+    mediaRecorderRef.current = null;
+    audioChunksRef.current = [];
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+    }
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+  }, []);
+
   if (loading || !journey || !trip || !currentTripDay || !currentJourneyDay || !moments.length) {
     return (
       <div className="min-h-[100dvh] bg-[#0f110d] p-4">
@@ -755,12 +997,19 @@ export default function JourneyFlowPage() {
     const target = moments.find(({ tripDay }) => tripDay.id === dayId)?.tripDay;
     if (target && timePhase(target.date, currentIso) === "future") return;
     setCaptureDayId(dayId);
+    setCaptureError(null);
+    void refreshCaptureEnvironment(dayId);
   }
 
   function closeCapture() {
+    cancelVoiceRecording();
     setCaptureDayId(null);
     setDraftFiles([]);
     setDraftText("");
+    setAudioUrl(null);
+    setAudioMimeType(null);
+    setCaptureEnvironment(emptyCaptureEnvironment);
+    setCaptureError(null);
     setRefineDraft(null);
     if (cameraInputRef.current) cameraInputRef.current.value = "";
     if (albumInputRef.current) albumInputRef.current.value = "";
@@ -784,17 +1033,149 @@ export default function JourneyFlowPage() {
     albumInputRef.current.click();
   }
 
+  async function refreshCaptureEnvironment(dayId?: string) {
+    setCaptureEnvironment({
+      ...emptyCaptureEnvironment,
+      message: typeof window !== "undefined" && !window.isSecureContext ? t("timeFlow.secureContextWarning") : undefined
+    });
+
+    const storageReady = await canUseRichLocalStorage();
+    setCaptureEnvironment((current) => ({
+      ...current,
+      storageReady
+    }));
+
+    try {
+      const position = await getBrowserPosition();
+      const latitude = position.coords.latitude;
+      const longitude = position.coords.longitude;
+      const day = trip?.days.find((item) => item.id === dayId);
+      const placeLabel = day?.city || day?.routeLabel || day?.title || coordinateLabel(latitude, longitude);
+      setCaptureEnvironment((current) => ({
+        ...current,
+        locationState: "ready",
+        placeLabel,
+        latitude,
+        longitude,
+        accuracyMeters: Math.round(position.coords.accuracy)
+      }));
+
+      try {
+        const weather = await getCurrentWeather(latitude, longitude, locale);
+        setCaptureEnvironment((current) => ({
+          ...current,
+          weatherState: "ready",
+          weather
+        }));
+      } catch {
+        setCaptureEnvironment((current) => ({
+          ...current,
+          weatherState: "blocked"
+        }));
+      }
+    } catch {
+      setCaptureEnvironment((current) => ({
+        ...current,
+        locationState: "blocked",
+        weatherState: "blocked"
+      }));
+    }
+  }
+
+  function stopVoiceRecording() {
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+    }
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+    setRecording(false);
+  }
+
+  function cancelVoiceRecording() {
+    const recorder = mediaRecorderRef.current;
+    mediaRecorderRef.current = null;
+    audioChunksRef.current = [];
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+    }
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+    setRecording(false);
+  }
+
+  async function toggleVoiceRecording() {
+    setCaptureError(null);
+    if (recording) {
+      stopVoiceRecording();
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setCaptureError(t("timeFlow.voiceUnavailable"));
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      audioChunksRef.current = [];
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        if (mediaRecorderRef.current !== recorder) return;
+        const mimeType = recorder.mimeType || "audio/webm";
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
+        void blobToDataUrl(blob).then((value) => {
+          setAudioUrl(value);
+          setAudioMimeType(mimeType);
+        });
+        stream.getTracks().forEach((track) => track.stop());
+        mediaRecorderRef.current = null;
+        mediaStreamRef.current = null;
+        setRecording(false);
+      };
+      recorder.start();
+      setRecording(true);
+    } catch {
+      setCaptureError(t("timeFlow.voicePermissionDenied"));
+    }
+  }
+
   async function handleCapture() {
     if (!captureTarget) return;
     if (timePhase(captureTarget.date, currentIso) === "future") return;
-    if (!draftText.trim() && !draftFiles.length) return;
+    if (!draftText.trim() && !draftFiles.length && !audioUrl) return;
+    if ((draftFiles.length || audioUrl) && captureEnvironment.storageReady === false) {
+      setCaptureError(t("timeFlow.storageRequired"));
+      return;
+    }
 
     setCapturing(true);
+    setCaptureError(null);
     try {
       const savedId = captureTarget.id;
-      await captureMoment(captureTarget.id, draftFiles, draftText.trim() || t("timeFlow.autoMomentLine"));
+      await captureMoment(
+        captureTarget.id,
+        draftFiles,
+        draftText.trim() || (audioUrl ? t("timeFlow.voiceMomentLine") : t("timeFlow.autoMomentLine")),
+        {
+          placeLabel: captureEnvironment.placeLabel,
+          latitude: captureEnvironment.latitude,
+          longitude: captureEnvironment.longitude,
+          accuracyMeters: captureEnvironment.accuracyMeters,
+          weather: captureEnvironment.weather,
+          audioUrl: audioUrl ?? undefined,
+          audioMimeType: audioMimeType ?? undefined
+        }
+      );
       closeCapture();
       setSavedDayId(savedId);
+    } catch {
+      setCaptureError(t("timeFlow.saveFailed"));
     } finally {
       setCapturing(false);
     }
@@ -816,6 +1197,22 @@ export default function JourneyFlowPage() {
     } finally {
       setRefining(false);
     }
+  }
+
+  function deleteMemory(dayId: string, noteId: string) {
+    if (!window.confirm(t("timeFlow.confirmDeleteMemory"))) return;
+    void updateDay(dayId, (day) => ({
+      ...day,
+      notes: (day.notes ?? []).filter((note) => note.id !== noteId)
+    }));
+  }
+
+  function deletePhoto(dayId: string, photoId: string) {
+    if (!window.confirm(t("timeFlow.confirmDeletePhoto"))) return;
+    void updateDay(dayId, (day) => ({
+      ...day,
+      photos: (day.photos ?? []).filter((photo) => photo.id !== photoId)
+    }));
   }
 
   function moveTime(nextIndex: number) {
@@ -859,7 +1256,7 @@ export default function JourneyFlowPage() {
         type="file"
         accept="image/*"
         capture="environment"
-        className="hidden"
+        className="fixed left-[-9999px] top-0 h-px w-px opacity-0"
         onChange={(event) => appendDraftFiles(event.currentTarget.files)}
       />
       <input
@@ -867,7 +1264,7 @@ export default function JourneyFlowPage() {
         type="file"
         accept="image/*"
         multiple
-        className="hidden"
+        className="fixed left-[-9999px] top-0 h-px w-px opacity-0"
         onChange={(event) => appendDraftFiles(event.currentTarget.files)}
       />
       <div className="relative z-10 h-[100dvh] overflow-hidden" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
@@ -930,12 +1327,18 @@ export default function JourneyFlowPage() {
         open={Boolean(captureDayId)}
         draftText={draftText}
         selectedCount={draftFiles.length}
+        audioReady={Boolean(audioUrl)}
+        recording={recording}
+        environment={captureEnvironment}
+        error={captureError}
         saving={capturing}
         refining={refining}
         refineDraft={refineDraft}
         onDraftTextChange={setDraftText}
         onTakePhoto={openCamera}
         onChoosePhotos={openAlbum}
+        onToggleVoice={toggleVoiceRecording}
+        onRefreshEnvironment={() => void refreshCaptureEnvironment(captureTarget?.id)}
         onRefine={refineMomentText}
         onAcceptRefine={() => {
           if (!refineDraft) return;
@@ -953,6 +1356,8 @@ export default function JourneyFlowPage() {
         phase={savedTargetPhase}
         locale={locale}
         setLocale={setLocale}
+        onDeleteMemory={deleteMemory}
+        onDeletePhoto={deletePhoto}
         onClose={() => setSavedDayId(null)}
         t={t}
       />

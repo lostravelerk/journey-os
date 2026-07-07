@@ -16,7 +16,17 @@ import {
 import { downloadTextFile } from "@/lib/utils";
 import { Journey } from "@/lib/domain";
 import { toJourney } from "@/lib/journey-adapter";
-import { makeId, NoteItem, PhotoItem, ShareStory, Trip } from "@/lib/schema";
+import { makeId, NoteItem, PhotoItem, ShareStory, Trip, WeatherSummary } from "@/lib/schema";
+
+type CaptureMomentContext = {
+  placeLabel?: string;
+  latitude?: number;
+  longitude?: number;
+  accuracyMeters?: number;
+  weather?: WeatherSummary;
+  audioUrl?: string;
+  audioMimeType?: string;
+};
 
 type JourneyContextValue = {
   journey: Journey | null;
@@ -30,7 +40,7 @@ type JourneyContextValue = {
   deleteJourney: (journeyId: string) => Promise<Trip | undefined>;
   updateDay: (dayId: string, updater: (day: Trip["days"][number]) => Trip["days"][number]) => Promise<void>;
   addPhotos: (dayId: string, files: FileList | File[]) => Promise<void>;
-  captureMoment: (dayId: string, files: FileList | File[] | null | undefined, memoryContent: string) => Promise<void>;
+  captureMoment: (dayId: string, files: FileList | File[] | null | undefined, memoryContent: string, context?: CaptureMomentContext) => Promise<void>;
   saveStory: (story: ShareStory) => Promise<void>;
   exportBackup: () => Promise<void>;
   importBackup: (file: File) => Promise<void>;
@@ -67,13 +77,50 @@ function clearFutureMomentData(trip: Trip) {
   return changed ? { ...trip, days } : trip;
 }
 
-function fileToDataUrl(file: File) {
+function readFileAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
+}
+
+function loadImage(file: File) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Could not load image."));
+    };
+    image.src = url;
+  });
+}
+
+async function fileToDataUrl(file: File) {
+  if (!file.type.startsWith("image/")) return readFileAsDataUrl(file);
+
+  try {
+    const image = await loadImage(file);
+    const maxDimension = 1800;
+    const scale = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight));
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) return readFileAsDataUrl(file);
+    context.drawImage(image, 0, 0, width, height);
+    return canvas.toDataURL("image/jpeg", 0.84);
+  } catch {
+    return readFileAsDataUrl(file);
+  }
 }
 
 export function JourneyProvider({ children }: { children: React.ReactNode }) {
@@ -160,11 +207,11 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
   );
 
   const captureMoment = React.useCallback(
-    async (dayId: string, files: FileList | File[] | null | undefined, memoryContent: string) => {
+    async (dayId: string, files: FileList | File[] | null | undefined, memoryContent: string, context?: CaptureMomentContext) => {
       if (!trip) return;
       const content = memoryContent.trim();
       const fileArray = files ? Array.from(files) : [];
-      if (!content && !fileArray.length) return;
+      if (!content && !fileArray.length && !context?.audioUrl) return;
 
       const urls = await Promise.all(fileArray.map(fileToDataUrl));
       const now = new Date().toISOString();
@@ -178,13 +225,25 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
         visibility: "private",
         selectedForShare: false
       }));
-      const memory: NoteItem | null = content
+      const memory: NoteItem | null = content || context?.audioUrl
         ? {
             id: makeId("note"),
             type: "memory",
             content,
             createdAt: now,
-            visibility: "private"
+            visibility: "private",
+            audioUrl: context?.audioUrl,
+            audioMimeType: context?.audioMimeType,
+            location:
+              context?.latitude !== undefined && context.longitude !== undefined
+                ? {
+                    latitude: context.latitude,
+                    longitude: context.longitude,
+                    accuracyMeters: context.accuracyMeters,
+                    label: context.placeLabel
+                  }
+                : undefined,
+            weather: context?.weather
           }
         : null;
 
@@ -193,6 +252,8 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
 
         return {
           ...day,
+          city: context?.placeLabel || day.city,
+          weather: context?.weather ?? day.weather,
           notes: memory ? [...notes, memory] : notes,
           photos: [...(day.photos ?? []), ...photos]
         };

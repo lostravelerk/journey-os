@@ -127,6 +127,14 @@ function stripPhotoDataForFallback(trip: Trip): Trip {
     ...trip,
     days: trip.days.map((day) => ({
       ...day,
+      notes: day.notes?.map((note) => (
+        note.audioUrl
+          ? {
+              ...note,
+              audioUrl: undefined
+            }
+          : note
+      )),
       photos: day.photos?.map((photo) => (
         photo.localUrl
           ? {
@@ -137,6 +145,25 @@ function stripPhotoDataForFallback(trip: Trip): Trip {
       ))
     }))
   };
+}
+
+function hasRichLocalData(trip: Trip) {
+  return trip.days.some((day) => (
+    day.photos?.some((photo) => Boolean(photo.localUrl)) ||
+    day.notes?.some((note) => Boolean(note.audioUrl))
+  ));
+}
+
+export async function canUseRichLocalStorage() {
+  const store = db();
+  if (!store) return false;
+
+  try {
+    await store.open();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function writeFallbackTrips(trips: Trip[]) {
@@ -365,7 +392,7 @@ function applyConstitutionDefaults(trip: Trip): Trip {
 
 async function persistEntityTables(trip: Trip) {
   const store = db();
-  if (!store) return;
+  if (!store) throw new Error("IndexedDB is not available for JourneyOS rich local storage.");
 
   await store.transaction(
     "rw",
@@ -507,9 +534,12 @@ export async function saveTrip(trip: Trip) {
   };
   writeFallbackTrip(next);
   try {
-    await withStorageTimeout(persistEntityTables(next), undefined);
-  } catch {
-    // localStorage fallback already persisted.
+    await persistEntityTables(next);
+  } catch (error) {
+    if (hasRichLocalData(next)) {
+      throw error;
+    }
+    // Text-only localStorage fallback already persisted.
   }
   return next;
 }

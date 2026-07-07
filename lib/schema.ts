@@ -156,6 +156,15 @@ export type NoteItem = {
   content: string;
   createdAt: string;
   visibility: Visibility;
+  audioUrl?: string;
+  audioMimeType?: string;
+  location?: {
+    latitude: number;
+    longitude: number;
+    accuracyMeters?: number;
+    label?: string;
+  };
+  weather?: WeatherSummary;
 };
 
 export type ShareStory = {
