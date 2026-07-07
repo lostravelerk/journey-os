@@ -122,9 +122,9 @@
     "weatherFallback": "Weather on the road",
     "waitingPhoto": "Waiting for a photo",
     "photos": "{count} photos",
-    "before": "Earlier light",
-    "after": "Later light",
-    "memoryMatter": "What stayed from this moment",
+    "before": "Upstream",
+    "after": "Downstream",
+    "memoryMatter": "What echoes beneath the surface",
     "defaultKept": "This day left a trace in the journey.",
     "defaultAhead": "The next scene is getting closer.",
     "lines": {

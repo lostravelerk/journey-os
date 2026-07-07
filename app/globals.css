@@ -57,3 +57,27 @@ img {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+@keyframes journey-river-flow {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -88;
+  }
+}
+
+.journey-river {
+  animation: journey-river-flow 18s linear infinite;
+}
+
+.journey-river-slow {
+  animation: journey-river-flow 28s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .journey-river,
+  .journey-river-slow {
+    animation: none;
+  }
+}

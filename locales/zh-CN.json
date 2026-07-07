@@ -122,9 +122,9 @@
     "weatherFallback": "天气在路上",
     "waitingPhoto": "等待一张照片",
     "photos": "{count} 张照片",
-    "before": "晨间之前",
-    "after": "傍晚之后",
-    "memoryMatter": "这一刻留下了什么",
+    "before": "上游",
+    "after": "下游",
+    "memoryMatter": "水面下留下的回声",
     "defaultKept": "这一天，也在旅程里留下了痕迹。",
     "defaultAhead": "下一段风景正在靠近。",
     "lines": {
